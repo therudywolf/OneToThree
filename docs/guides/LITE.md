@@ -127,6 +127,24 @@ enrolled 2FA secret undecryptable.
 - Your data lives in Docker volumes (`lite_pgdata`, `lite_minio`). Never
   `docker compose down -v` unless you mean to erase it.
 - Turning a feature off removes both its UI and the infra it needs.
+- **The first admin.** The installer asks for a handle and writes it as
+  `OT_ADMIN_USERNAME` (→ `ADMIN_BOOTSTRAP_USERNAME` in the API). Register that
+  handle in the app, restart the API once, and it becomes the instance owner.
+  The promotion only fires while there is no owner yet, so the variable is
+  inert afterwards and safe to leave. It never creates an account. Leave it
+  blank and the installer prints the psql one-liner instead.
+- **Backups.** `npm run lite:backup` writes `backups/lite-<ts>.tar.gz`: the whole
+  Postgres cluster, the MinIO data directory (when media is on), and
+  `.env.lite`. Restore with
+  `RESTORE_CONFIRM=YES npm run lite:restore backups/lite-….tar.gz`.
+  The archive **contains your secrets** — DB password, JWT secret, TOTP wrap
+  key — because a dump without them restores a database nobody can read
+  (every session invalid, every TOTP secret undecryptable). Keep it as safe
+  as the server. The production scripts (`scripts/backup*.sh`) do NOT work
+  against Lite: they resolve a different compose file and project.
+- **Turning knobs without a redeploy.** `/admin` -> CONFIG edits open
+  registration, guest-link TTL, meeting seats and the guest caps at runtime.
+  Those overrides beat `.env.lite` until reset; feature flags stay env-only.
 
 ## Verified
 
@@ -251,6 +269,25 @@ root-пароль только при первом создании тома, п
 - Данные — в Docker-томах (`lite_pgdata`, `lite_minio`). Не делай
   `docker compose down -v`, если не хочешь всё стереть.
 - Выключение функции убирает и её UI, и нужную ей инфраструктуру.
+- **Первый администратор.** Установщик спрашивает ник и пишет его в
+  `OT_ADMIN_USERNAME` (→ `ADMIN_BOOTSTRAP_USERNAME` у API). Зарегистрируй
+  этот ник в приложении, перезапусти api один раз — и он станет владельцем
+  инстанса. Повышение срабатывает, только пока владельца нет, дальше
+  переменная безвредна. Аккаунт она не создаёт. Оставишь пустым —
+  установщик напечатает однострочник для psql, как раньше.
+- **Бэкапы.** `npm run lite:backup` пишет `backups/lite-<ts>.tar.gz`: весь
+  кластер Postgres, каталог MinIO (если медиа включено) и `.env.lite`.
+  Восстановление —
+  `RESTORE_CONFIRM=YES npm run lite:restore backups/lite-….tar.gz`.
+  В архиве **лежат секреты** — пароль БД, JWT-секрет, ключ обёртки TOTP:
+  без них восстановленную базу невозможно прочитать (все сессии
+  недействительны, все TOTP-секреты не расшифровываются). Храни архив так
+  же бережно, как сам сервер. Прод-скрипты (`scripts/backup*.sh`) для Lite
+  НЕ работают: они смотрят в другой compose-файл и другой проект.
+- **Ручки без передеплоя.** `/admin` -> CONFIG меняет открытую регистрацию,
+  TTL гостевой ссылки, места во встрече и потолки гостей на лету. Эти
+  переопределения сильнее `.env.lite`, пока их не сбросят; флаги фич
+  остаются только в окружении.
 
 ## Проверено
 

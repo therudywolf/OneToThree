@@ -45,10 +45,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      # 22, like every other job in this repo (release.yml, prod-checks.yml).
+      # This one was missed when the others were bumped, and a desktop bundle
+      # built on a different major than the APK and the server is a difference
+      # nobody would look for while chasing a bug.
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install Rust toolchain
@@ -92,6 +96,23 @@ jobs:
 
       - name: Build Tauri bundles
         working-directory: desktop/tauri
+        # macOS signing + notarisation are OPT-IN: with the secrets unset these
+        # variables are empty strings and Tauri produces exactly the unsigned
+        # bundle it does today. With them set, the .dmg stops being the one
+        # Gatekeeper refuses to open by default — which is the single biggest
+        # drop-off on the desktop download.
+        #
+        # Windows Authenticode is NOT wired here: Tauri signs via a certificate
+        # thumbprint from the machine store (bundle.windows.certificateThumbprint),
+        # which needs the cert imported into the runner first. Left undone rather
+        # than half-done, so nobody assumes .exe/.msi are signed.
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx @tauri-apps/cli build --bundles ${{ matrix.bundles }}
 
       - name: Upload artifacts

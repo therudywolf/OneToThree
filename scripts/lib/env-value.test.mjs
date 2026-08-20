@@ -12,11 +12,11 @@
  */
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { hasBash, runBash } from './test-bash.mjs'
 
 const LIB = dirname(fileURLToPath(import.meta.url))
 const SCRIPTS = dirname(LIB)
@@ -28,9 +28,7 @@ function envValue(key, contents) {
   const file = join(dir, '.env.prod').replace(/\\/g, '/')
   writeFileSync(file, contents)
   try {
-    const r = spawnSync('bash', ['-c', `source "${HELPER}"; env_value "${key}" "${file}"`], {
-      encoding: 'utf8',
-    })
+    const r = runBash(`source "${HELPER}"; env_value "${key}" "${file}"`)
     assert.equal(r.status, 0, r.stderr)
     return r.stdout
   } finally {
@@ -38,7 +36,10 @@ function envValue(key, contents) {
   }
 }
 
-describe('env_value', () => {
+// A host with no usable shell (a bare Windows box whose `bash` is the WSL relay
+// with no distribution) SKIPS these; it must not report ten failures for a
+// missing interpreter, which is what made `npm run test:all` red on Windows.
+describe('env_value', { skip: hasBash ? false : 'no usable bash on this host' }, () => {
   test('reads a plain value', () => {
     assert.equal(envValue('NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_API_URL=https://api.example.com\n'), 'https://api.example.com')
   })

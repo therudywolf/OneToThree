@@ -11,7 +11,8 @@ and Capacitor (mobile).
   Source: `desktop/tauri/src-tauri/target/release/bundle/`.
 - `android/` — Capacitor `.apk` / `.aab`.
   Source: `mobile/capacitor/android/app/build/outputs/`.
-- `ios/` — Capacitor `.ipa` (once the iOS target is added).
+- `ios/` — Capacitor `.ipa`. Empty, and expected to stay so: the iOS target
+  has not been added (see `docs/BUILD_MACOS_IOS.md`).
 
 ## Convention
 

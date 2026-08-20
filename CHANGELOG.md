@@ -73,8 +73,61 @@ have a face and, more to the point, a working composer).
   Telegram-style; visitors get a channel card with a join handle.
 - **`FEATURE_OPEN_REGISTRATION`** (default on) closes self-registration, so guest
   links can be the only door for strangers.
+- **A first admin without psql.** `ADMIN_BOOTSTRAP_USERNAME` promotes a
+  registered handle to the instance owner on boot — once, while there is no
+  owner yet, so the variable is inert afterwards and never creates an account.
+  The Lite installer (CLI and GUI) asks for it. Until now the only documented
+  path was an UPDATE inside the database container, and one of the four guides
+  spelled it wrong: `role='admin'` without `user_group='creator'` yields an
+  admin who can open the panel and is refused by half of it.
+- **Instance settings you can change without a redeploy** — `/admin` -> CONFIG.
+  Open registration, guest-link TTL, meeting seats, temp-chat TTL, the per-user
+  link cap and the server-wide guest cap are read per request as
+  *DB override ?? env ?? default*; "Сбросить" deletes the override and hands the
+  knob back to `.env`. Writes are creator-only and audited. Feature flags stay
+  environment-only on purpose — they decide whether route groups exist at all.
+  The same tab answers "what am I running": live build, Node version, uptime,
+  whether Postgres/Redis/LiveKit actually respond, live guests and links.
+- **A closed instance says so on the sign-in screen** instead of failing at the
+  end of registration with `REGISTRATION_DISABLED`.
+- **The guest screens speak English too.** `/guest/call/*`, `/guest/chat/*` and
+  the shared room card were hardcoded Russian — the one surface reached by people
+  who have no account, no settings screen and no way to know a language switch
+  exists. They now follow the browser's language, but only when this browser has
+  never made a choice (an existing user's preference is never overridden), and
+  every guest card carries an EN/RU toggle in the same corner.
+- **A backup for Lite.** `npm run lite:backup` / `lite:restore` — the production
+  scripts resolve a different compose file and project, and Lite's MinIO is
+  profile-gated, which they treat as fatal rather than as "this install has no
+  object store". The archive deliberately includes `.env.lite`: a dump without
+  the JWT secret and the TOTP wrap key restores into a database nobody can read.
+- **Warnings and errors are counted, and the admin panel shows the tally.** The
+  guest sweeper once failed on every tick for five days and the only trace was a
+  log line nobody read. A healthy instance sits near zero; a job failing on a
+  timer climbs where an operator can see it.
+- **Guest links gained the controls the API already had**: seats on a meeting
+  link, "quiet guest" (joins with no mic or camera), how long each link has
+  left, and **Revoke all** — promised since the first draft of the guest
+  concept. Revoking closes the door to new guests; a meeting already running
+  keeps running. A knock now also makes a sound, since the host is usually in
+  another app when it arrives and the knock expires in five minutes. At most
+  three knock cards are on screen at once — a ten-seat meeting filling up used to
+  bury the app under them, pushing the oldest (nearest to expiry) off the top.
 
 ### Changed
+- **`SECURITY.md` covers guest links, the runtime settings, and key rotation** —
+  including the one that must never be rotated in place (`TOTP_WRAP_KEY`, which
+  wraps every stored TOTP secret). Two stale claims were corrected: 1:1 chats DO
+  have forward secrecy (Double Ratchet v2 + X3DH; groups with a shared sector key
+  do not), and the JTI denylist is Redis-backed, not memory-only.
+- **macOS desktop bundles can be signed and notarised** by setting the `APPLE_*`
+  secrets; with them unset the build is byte-for-byte what it was. Windows
+  Authenticode is deliberately still unwired rather than half-wired.
+- The workspace `package.json` versions (`client`, `server`, `mobile/capacitor`)
+  now match `VERSION` instead of sitting at `0.1.0`.
+- `docs/BUILD_MACOS_IOS.md` opens with the truth: the macOS app is built in CI,
+  the iOS app does not exist and that half of the document is a runbook for
+  adding it.
   *no-domain / this machine* (HTTP on `localhost`, everything works incl. media),
   *no-domain / LAN* (self-signed HTTPS via Caddy's internal CA so E2EE works off the
   local machine — Web Crypto needs a secure context, which plain HTTP over a LAN IP
@@ -108,6 +161,12 @@ have a face and, more to the point, a working composer).
   tables are left alone — dropping those is a separate, irreversible decision.)
 
 ### Fixed
+- **`npm run test:all` could not pass on Windows.** The `env_value` suite spawned
+  `bash` from PATH, which on Windows is the WSL relay — with no distribution
+  installed it answers `execvpe(/bin/bash) failed` and a non-zero status, so ten
+  tests failed for the interpreter rather than the code. Its neighbour survived
+  the same hazard only by skipping all 28 of its own tests. Both now resolve a
+  real shell (Git Bash) through one helper and skip honestly when there is none.
 - **The first message from a new contact was lost.** On a cold load, opening a
   direct chat reached history decryption before the vault finished installing the
   Double Ratchet identity. Losing that race rendered `[DECRYPT_FAIL]` and nothing

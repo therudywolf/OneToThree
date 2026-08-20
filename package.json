@@ -19,6 +19,8 @@
     "build:client:export:env": "npm run build:export:env -w project-13-client",
     "lite": "node scripts/lite/install.mjs",
     "lite:gui": "node scripts/lite/wizard/server.mjs",
+  "lite:backup": "node scripts/lite/backup.mjs",
+  "lite:restore": "node scripts/lite/backup.mjs --restore",
     "android:clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['client/out','client/.next'])rmSync(p,{recursive:true,force:true})\"",
     "android:sync": "npm run android:clean && npm run build:client:export && npm run sync --prefix mobile/capacitor",
     "android:open": "npm run open:android --prefix mobile/capacitor",

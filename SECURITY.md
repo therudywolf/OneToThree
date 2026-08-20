@@ -165,14 +165,89 @@ The design protects against:
 - **Root (`npm audit`):** 4 moderate severity — all in `esbuild` via `drizzle-kit` (dev dependency, migration CLI only). Not exploitable at runtime. Fix requires breaking drizzle-kit upgrade.
 - **Unfixable:** `esbuild <=0.24.2` (GHSA-67mh-4wv8-2f99) — moderate severity, development server request relay. Only affects `drizzle-kit` CLI (migration tool), never runs in production. Blocked by breaking change in drizzle-kit.
 
+## Guest links (opt-in, `FEATURE_GUESTS`)
+
+Design and rationale: `docs/project/GUEST_MODE_CONCEPT.ru.md`. What matters for
+the threat model:
+
+- **A call guest has no account at all.** No `users` row, no session cookie, no
+  WebSocket. Their only credential is a LiveKit JWT (<= `LIVEKIT_TOKEN_TTL_SECONDS`,
+  default 2 h). They cannot reach an authenticated API route because there is no
+  body to authenticate — the containment is physical, not a checklist.
+- **A temp-chat guest is an ephemeral account** (`user_group='guest'`) carrying a
+  `grp:'guest'` session claim and a hard `guest_expires_at`. Every route is
+  **denied by default**; the allowlist (`server/src/lib/guest-allowed-routes.ts`)
+  is the only way in, and a test pins each entry against the live route table.
+  Session refresh never extends past the hard expiry.
+- **Guests are never anonymous to the operator.** The server sees IP and
+  user-agent (`devices` rows for chat guests, edge logs for call guests). Guest
+  mode removes friction, not observability.
+- **Identity is unverified by construction**, so a guest carries a permanent
+  badge in the chat header and on the call tile, sourced from the server-issued
+  token metadata — renaming cannot remove it. Safety numbers are not offered:
+  there is nothing to confirm.
+- **A call guest's media is not E2EE against the server**, exactly like any
+  LiveKit group call here: the room key is server-derived. This is stated in the
+  UI rather than papered over.
+- **Death is enforced three ways**: explicit leave / host kick, offline grace
+  (`GUEST_OFFLINE_GRACE_MIN`) via the sweeper, and the hard TTL. Purging a guest
+  deletes the temporary chat with them, ciphertext included.
+- **Blast radius of a leaked link** is bounded by seats (`max_uses`, in
+  Postgres), TTL, per-user and server-wide guest caps, per-approval consent from
+  the host for calls, and one-click **Revoke all** for the whole set. Revoking
+  stops new entries; it does not evict guests already in a room — kick does.
+
+## Runtime instance settings
+
+`/admin` -> CONFIG writes rows into `instance_settings`; the effective value of a
+knob is `DB override ?? env ?? built-in default`.
+
+- **Writes are creator-only** (`user_group='creator'`), not merely admin. These
+  knobs decide whether strangers can create accounts and how much of the server
+  one guest link can spend; an admin able to silently re-open registration would
+  be a privilege-escalation path.
+- Every change is written to `admin_audit_log` with both the requested and the
+  effective value (they differ when an integer is clamped into its range).
+- Values are validated against a compiled-in registry: unknown key -> 404,
+  wrong type -> 400, out-of-range integer -> clamped, never stored raw.
+- **Feature flags stay environment-only.** They decide whether route groups are
+  registered at boot, so a runtime toggle would report a feature as on while
+  every one of its endpoints 404s.
+- `ADMIN_BOOTSTRAP_USERNAME` promotes an **existing** account to `creator` on
+  boot, and only while the instance has no creator. It never creates an account,
+  so the variable alone grants nobody access — whoever holds that account's keys
+  is still the only one who can sign in as it. It is the same trust as the psql
+  `UPDATE` it replaces, minus the shell.
+
+## Key rotation
+
+There is no automated rotation. Do it by hand, and know what each one costs:
+
+| Secret | How | Cost |
+|---|---|---|
+| `JWT_SECRET` | replace in `.env.prod`, restart `api` | every session is invalidated at once — all clients must sign in again. There is no dual-secret grace period |
+| `TOTP_WRAP_KEY` | **do not rotate in place** — the stored TOTP secrets are wrapped with it and become undecryptable. Rotate only together with re-enrolling every 2FA user | 2FA breaks for everyone still enrolled under the old key |
+| VAPID keypair | regenerate, restart `api` | every Web Push subscription silently stops delivering; users must re-subscribe |
+| MinIO credentials | rotate in MinIO, update `.env.prod`, restart `api` | in-flight presigned URLs die; already-downloaded media is unaffected |
+| Database password | rotate in Postgres and `.env.prod` together | the stack cannot start with the two out of sync |
+
+After any rotation, verify with `GET /api/version` (the build is live) and by
+signing in from a fresh browser profile.
+
 ## Security caveats
 
 - If a client device is compromised, local private keys can be exfiltrated.
 - Push notifications intentionally avoid plaintext message content.
 - Offline queued websocket messages are still encrypted payloads, but are stored in browser memory until sent.
-- No forward secrecy — compromised long-term ECDH key exposes historical messages.
+- **1:1 chats have forward secrecy** (Double Ratchet v2 + X3DH, per device:
+  `client/src/lib/ratchet/`). Group/sector chats do **not**: they use a shared
+  sector key, so a compromised member key exposes the history that key covered
+  until the next rotation.
 - Metadata (who messages whom, timing, sizes) is observable by the server.
-- JTI denylist is in-memory; it resets on server restart. For production, consider Redis-backed denylist.
+- The JTI denylist is Redis-backed whenever `REDIS_URL` is set, and `REDIS_URL`
+  is a hard requirement in production (`assertProdSecurityEnv`). The in-process
+  Map is the single-node fallback only — a Lite install without Redis loses
+  denied JTIs on restart.
 
 ## Recommended production controls
 
@@ -183,5 +258,4 @@ The design protects against:
 - Consider adding ClamAV scanning for uploaded files via MinIO webhook.
 - Monitor `login_events` table for brute-force patterns.
 - Implement login event cleanup cron (retain 90 days).
-- Consider migrating JTI denylist to Redis for persistence across restarts.
 - Implement client-side periodic token refresh using `POST /api/auth/refresh`.

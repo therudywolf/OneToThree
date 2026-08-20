@@ -161,6 +161,15 @@ have a face and, more to the point, a working composer).
   tables are left alone — dropping those is a separate, irreversible decision.)
 
 ### Fixed
+- **The production web image was built from a lockfile nobody had updated in a
+  very long time.** `npm audit` at the repository root reported 0 vulnerabilities
+  and was telling the truth about a file that image never reads: `web` builds
+  with `context: ./client`, so `npm ci` runs against `client/package-lock.json`,
+  which npm stopped maintaining the day this repo became a workspace (an install
+  inside `client/` walks up and writes the root lock instead). Five packages with
+  open advisories — three rated high — shipped in the served image, plus a
+  `fast-uri` the current tree does not even require. Regenerated outside the
+  workspace and verified by building the image before swapping any container.
 - **`npm run test:all` could not pass on Windows.** The `env_value` suite spawned
   `bash` from PATH, which on Windows is the WSL relay — with no distribution
   installed it answers `execvpe(/bin/bash) failed` and a non-zero status, so ten

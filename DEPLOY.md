@@ -168,6 +168,14 @@ charge. Changes take effect within seconds — no restart.
 Feature flags (`FEATURE_*`) stay environment-only: they decide whether whole
 route groups are registered at boot, so the panel shows them read-only.
 
+### Metrics (optional, off by default)
+
+Set `METRICS_TOKEN` to a long random string and the API serves Prometheus
+metrics at `GET /metrics` for requests carrying
+`Authorization: Bearer <token>`; leave it unset and the route does not exist.
+Details, and what is deliberately absent from the output, in
+[docs/OPS.md](./docs/OPS.md#metrics).
+
 ### Enabling guest links (optional, off by default)
 
 One-time guest links (call guests + temp chats — see

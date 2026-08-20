@@ -95,7 +95,7 @@ OneToThree is:
 
 | Technology | Version | Purpose |
 |---|---|---|
-| **Docker** | — | Containerization (node:20-alpine base) |
+| **Docker** | — | Containerization (node:22-alpine base) |
 | **Docker Compose** | v2 | Service orchestration (7 services) |
 | **PostgreSQL** | alpine | Persistent storage — users, chats, messages, devices |
 | **MinIO** | latest | S3-compatible encrypted media storage |
@@ -597,9 +597,9 @@ docker-compose.prod.yml — 7 services
 |---|---|---|---|
 | **db** | `postgres:alpine` | 1 CPU, 512 MB | `pg_isready` every 5s |
 | **minio** | `minio/minio:latest` | 2 CPU, 512 MB | `mc ready local` every 5s |
-| **db-migrate** | Custom (node:20-alpine) | 0.25 CPU share | Runs once, exits |
-| **api** | Custom (node:20-alpine) | 4 CPU, 1 GB, read-only fs | `GET /health` every 10s |
-| **web** | Custom (node:20-alpine) | 4 CPU, 1.5 GB | `GET /` every 15s |
+| **db-migrate** | Custom (node:22-alpine) | 0.25 CPU share | Runs once, exits |
+| **api** | Custom (node:22-alpine) | 4 CPU, 1 GB, read-only fs | `GET /health` every 10s |
+| **web** | Custom (node:22-alpine) | 4 CPU, 1.5 GB | `GET /` every 15s |
 | **coturn** | `coturn/coturn:4.6` | Host networking | — |
 | **caddy** | `caddy:2-alpine` | 1 CPU, 256 MB | — |
 

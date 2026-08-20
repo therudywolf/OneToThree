@@ -277,6 +277,18 @@ export function broadcastToUsers(userIds: string[], payload: unknown): void {
  * runs on up to 2400 frames/min/socket, so it must never become a Redis round
  * trip. Cross-instance answers come from {@link isOnline} / {@link areOnline}.
  */
+/**
+ * Live socket counts for the metrics endpoint: connected users and the total
+ * number of sockets across them (one user can hold several — phone, desktop,
+ * a second tab). Reads two in-memory maps and nothing else, so it is safe on a
+ * scrape path that must never touch the database.
+ */
+export function socketCounts(): { users: number; sockets: number } {
+  let sockets = 0
+  for (const set of userSockets.values()) sockets += set.size
+  return { users: userSockets.size, sockets }
+}
+
 export function hasActiveSocket(userId: string): boolean {
   const set = userSockets.get(userId)
   if (!set?.size) return false

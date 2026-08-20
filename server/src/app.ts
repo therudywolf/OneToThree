@@ -37,6 +37,7 @@ import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { getFeatureFlags, type FeatureFlags } from './lib/feature-flags.js'
 import { getBooleanSetting } from './lib/instance-settings.js'
 import { logCounterHooks } from './lib/log-counters.js'
+import { authorizeMetrics, metricsToken, renderMetrics } from './lib/metrics.js'
 import { requireSecret } from './lib/read-secret.js'
 import { getRedis } from './lib/redis.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
@@ -617,6 +618,25 @@ export async function buildApp() {
     }
     return { version: cachedVersion }
   })
+
+  // Prometheus scrape target. Registered ONLY when METRICS_TOKEN is set, so an
+  // instance that did not ask for metrics answers 404 rather than serving them
+  // to whoever guesses the path. See lib/metrics.ts for why it carries no
+  // per-user labels and does no I/O.
+  if (metricsToken()) {
+    app.get('/metrics', async (request, reply) => {
+      if (!authorizeMetrics(request.headers.authorization)) {
+        // 404, not 401: a wrong token should not confirm that this instance
+        // exposes metrics at all.
+        return reply.status(404).send({ error: 'NOT_FOUND' })
+      }
+      return reply
+        .header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+        .header('Cache-Control', 'no-store')
+        .send(renderMetrics({ version: SERVER_VERSION, commit: SERVER_COMMIT_SHA }))
+    })
+    app.log.info('metrics endpoint enabled at GET /metrics (bearer token required)')
+  }
 
   app.get('/health/ready', async (request, reply) => {
     try {

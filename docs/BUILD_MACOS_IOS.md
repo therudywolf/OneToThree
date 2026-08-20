@@ -1,5 +1,13 @@
 # Building OneToThree for macOS & iOS
 
+> **Status, 2026-08-20.** The **macOS desktop app is real**: `release.yml`
+> builds a `.dmg` on `macos-14` and attaches it to every tagged release.
+> The **iOS app is not** — `mobile/capacitor/` has no `ios/` project in the
+> repository, nothing has ever been published to `releases/ios/`, and no CI job
+> builds one. The iOS half of this document is a *runbook for adding that
+> target*, not a description of something that exists. `npm run ios:add`
+> is where it starts, and it needs a Mac.
+
 Everything you need to build the **macOS desktop app** (Tauri `.dmg`) and the
 **iOS app** (Capacitor `.ipa`). Both targets can only be built **on a Mac** —
 Apple's toolchain (Xcode / `codesign` / CocoaPods) does not run on Windows or

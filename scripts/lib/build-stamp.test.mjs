@@ -15,11 +15,12 @@
  */
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, cpSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { BASH, hasBash, runBash } from './test-bash.mjs'
 
 const LIB_DIR = dirname(fileURLToPath(import.meta.url))
 const SCRIPTS_DIR = dirname(LIB_DIR)
@@ -51,22 +52,10 @@ const STUB_ENV = {
 }
 
 function bash(script, { cwd = REPO_ROOT, env = {} } = {}) {
-  const res = spawnSync('bash', ['-c', script], {
-    cwd,
-    encoding: 'utf8',
-    env: { ...process.env, ...env },
-  })
+  const res = runBash(script, { cwd, env: { ...process.env, ...env } })
   if (res.error) throw res.error
   return { code: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '' }
 }
-
-const hasBash = (() => {
-  try {
-    return bash('echo ok').stdout.trim() === 'ok'
-  } catch {
-    return false
-  }
-})()
 
 const hasFlock = hasBash && bash('command -v flock >/dev/null 2>&1').code === 0
 
@@ -442,7 +431,10 @@ describe('deploy-prod.sh — the busy lock names the holder', { skip: !hasFlock 
     // `exec sleep` on purpose: the lock lives on the open file description, so
     // it survives the exec and the pid we recorded stays the pid that holds it.
     const holder = spawn(
-      'bash',
+      // Same shell the rest of the suite resolved — on Windows the `bash` on
+      // PATH is the WSL relay, which would never take the lock this test waits
+      // for. (This block only runs when `hasFlock`, so BASH is non-null.)
+      BASH,
       ['-c', 'exec 9>>"$0"; flock -n 9 || exit 3; : >"$0"; echo $$ >&9; exec sleep 30', lock],
       { stdio: 'ignore' }
     )

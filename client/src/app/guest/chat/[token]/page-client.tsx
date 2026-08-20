@@ -415,6 +415,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
             </span>
             <input
               type="text"
+              name="nickname"
               value={nickname}
               onChange={(e) => {
                 setNickname(e.target.value)

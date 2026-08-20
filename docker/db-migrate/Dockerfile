@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 # Install from the committed lockfile. `npm install` re-resolved drizzle-orm, pg
 # and their whole transitive tree from the live registry on every deploy, and a

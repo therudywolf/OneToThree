@@ -155,16 +155,44 @@ docker compose -f docker-compose.prod.yml up -d --build api web
 Or use the GitHub Releases page to grab the previous tag and
 `git checkout` it.
 
-## Adding metrics / Grafana
+## Metrics
 
-Out of scope for v0.5; the planned path is:
+The API exposes Prometheus metrics at `GET /metrics`, **opt-in**: with
+`METRICS_TOKEN` unset the route is not registered and the path 404s, so an
+instance that did not ask for metrics exposes nothing. Set a long random token
+(shorter than 16 characters is treated as unset — a secret that looks like
+protection and is not is worse than none):
 
-1. Stand up `prometheus` + `grafana` on the same VPS as a separate
-   docker-compose stack under `~/stacks/grafana.onetothree.ru/`.
-2. Wire the `infra/caddy/sites/grafana.onetothree.ru.caddy` proxy via
-   `infra/add-site.sh`.
-3. Add a `/metrics` endpoint to the Fastify api (already importable as
-   `fastify-metrics`).
-4. Scrape from prometheus, dashboard in Grafana.
+```bash
+# .env.prod
+METRICS_TOKEN=$(openssl rand -hex 32)
+```
 
-File an issue when you're ready.
+```bash
+curl -H "Authorization: Bearer $METRICS_TOKEN" https://api.example.com/metrics
+```
+
+A wrong or missing token also gets 404, not 401: the answer must not confirm
+that this instance serves metrics at all.
+
+What it exports — deliberately small, with **no per-user series** (a scrape must
+not become a way to enumerate who is online) and **no I/O** (no query, no Redis
+round trip: monitoring must not add load to a database precisely when it is
+being asked why the database is slow):
+
+| Metric | Meaning |
+|---|---|
+| `onetothree_build_info{version,commit,node}` | which build answered |
+| `onetothree_process_uptime_seconds` | seconds since this API process started |
+| `onetothree_process_resident_memory_bytes`, `…_heap_used_bytes` | process memory |
+| `onetothree_log_lines_total{level="warn"\|"error"}` | log lines at or above warn since start |
+| `onetothree_ws_connected_users`, `onetothree_ws_sockets` | live WebSockets on this instance |
+
+`onetothree_log_lines_total` is the one to alert on first. A healthy instance
+sits flat; a background job failing on a timer climbs steadily, which is exactly
+the shape that once went unnoticed for five days because the only trace was a
+log line nobody read. The same counter is visible in `/admin` → CONFIG.
+
+Prometheus + Grafana themselves are still not deployed: the planned path is a
+separate compose stack under `~/stacks/grafana.onetothree.ru/`, proxied by its
+own Caddy site, scraping the endpoint above.

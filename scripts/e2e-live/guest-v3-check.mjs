@@ -36,6 +36,12 @@ async function launch(label) {
     userAgent: UA,
     permissions: ['microphone', 'camera'],
     serviceWorkers: 'block',
+    // The guest screens follow the BROWSER's language when this browser has
+    // never chosen one — which is every fresh Playwright context. Left at
+    // Playwright's en-US default, every Russian button name below stops
+    // matching and the failure reads like a broken guest flow. Pin it, so what
+    // this harness asserts is the flow and not the translation.
+    locale: 'ru-RU',
   })
   await ctx.addInitScript(() => {
     try { localStorage.setItem('p13:onboarding_shown', 'true') } catch { /* ignore */ }
@@ -276,11 +282,13 @@ try {
     timeout: 120_000,
   })
   await G1.page.waitForTimeout(2500) // Anubis PoW
-  const nickField = G1.page.locator('input[placeholder="Например, Аня"]')
+  // By name, not by placeholder: the placeholder is user-visible copy and moves
+  // with the language; `name` is part of the form contract.
+  const nickField = G1.page.locator('input[name="nickname"]')
   await nickField.waitFor({ state: 'visible', timeout: 60_000 })
   await nickField.fill(`Гость Чат ${STAMP}`)
   await G1.page.getByRole('button', { name: 'Войти', exact: true }).click()
-  await G1.page.locator('input[placeholder="Сообщение…"]').waitFor({ state: 'visible', timeout: 60_000 })
+  await G1.page.locator('input[name="message"]').waitFor({ state: 'visible', timeout: 60_000 })
 
   let tempChatId = null
   for (let i = 0; i < 20 && !tempChatId; i++) {

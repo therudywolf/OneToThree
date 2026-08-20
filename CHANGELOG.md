@@ -101,6 +101,12 @@ have a face and, more to the point, a working composer).
   profile-gated, which they treat as fatal rather than as "this install has no
   object store". The archive deliberately includes `.env.lite`: a dump without
   the JWT secret and the TOTP wrap key restores into a database nobody can read.
+- **Prometheus metrics at `GET /metrics`** — opt-in through `METRICS_TOKEN`, and
+  absent (404, not 401) when it is unset, so a wrong guess cannot even confirm
+  the endpoint exists. Deliberately narrow: build, uptime, memory, live socket
+  counts, and the warn/error tally — no per-user series, because a scrape must
+  not become a way to enumerate who is online, and no queries, because
+  monitoring must not add load to the database it is being asked about.
 - **Warnings and errors are counted, and the admin panel shows the tally.** The
   guest sweeper once failed on every tick for five days and the only trace was a
   log line nobody read. A healthy instance sits near zero; a job failing on a
@@ -125,6 +131,15 @@ have a face and, more to the point, a working composer).
   Authenticode is deliberately still unwired rather than half-wired.
 - The workspace `package.json` versions (`client`, `server`, `mobile/capacitor`)
   now match `VERSION` instead of sitting at `0.1.0`.
+- **Every image moves off Node 20, which reached end of life in April.** The
+  api, web, db-migrate and dev images — and the throwaway container `deploy.sh`
+  runs the pre-deploy suite in, which has to be the same major or "the tests
+  passed" is a statement about a runtime nothing ships — are on `node:22-alpine`,
+  matching CI.
+- The guest name and message inputs carry a `name` attribute. They had none,
+  which is odd for a text input to begin with, and it left the live guest
+  harness pinning the whole flow on a Russian placeholder — a selector that
+  broke the moment those screens learned to speak English.
 - `docs/BUILD_MACOS_IOS.md` opens with the truth: the macOS app is built in CI,
   the iOS app does not exist and that half of the document is a runbook for
   adding it.

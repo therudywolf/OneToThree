@@ -115,7 +115,7 @@ run_test_suites() {
     -e JWT_SECRET="predeploy-test-suite-jwt-secret-not-a-production-key" \
     -e REDIS_URL="redis://${PREDEPLOY_REDIS}:6379" \
     -e VITEST_REDIS_URL="redis://${PREDEPLOY_REDIS}:6379" \
-    node:20-alpine \
+    node:22-alpine \
     sh -c 'npm ci --no-audit --no-fund && npm run db:push && npm run test:server && npm run test:unit -w project-13-client'
   local rc=$?
 

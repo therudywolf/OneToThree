@@ -163,6 +163,7 @@ export function GuestChatView({
       >
         <input
           type="text"
+          name="message"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={t('gs.messagePlaceholder')}

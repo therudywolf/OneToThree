@@ -456,6 +456,13 @@
       "when": 1786650000000,
       "tag": "0064_guest_invite_multi_use",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1786650010000,
+      "tag": "0065_instance_settings",
+      "breakpoints": true
     }
   ]
 }

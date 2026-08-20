@@ -11,12 +11,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Copy, DoorOpen, Link2, LogIn, MessageSquare, Trash2, Video, X } from 'lucide-react'
+import { Copy, DoorOpen, Link2, LogIn, MessageSquare, MicOff, Trash2, Video, X } from 'lucide-react'
 import {
   createGuestInvite,
   guestInviteUrl,
   listGuestInvites,
   meetingHref,
+  revokeAllGuestInvites,
   revokeGuestInvite,
   type GuestInvite,
 } from '@/lib/api/guest'
@@ -28,6 +29,23 @@ type Props = {
   onClose: () => void
 }
 
+/**
+ * "через 3 ч" / "через 40 мин" for a link's TTL.
+ *
+ * The list showed no expiry at all, so a link that was about to die looked
+ * exactly like a fresh one — and the whole point of these links is that they
+ * are short-lived.
+ */
+function formatExpiry(iso: string, expiredLabel: string): string {
+  const ms = new Date(iso).getTime() - Date.now()
+  if (!Number.isFinite(ms) || ms <= 0) return expiredLabel
+  const mins = Math.round(ms / 60_000)
+  if (mins < 60) return `${mins} мин`
+  const hours = Math.round(mins / 60)
+  if (hours < 48) return `${hours} ч`
+  return `${Math.round(hours / 24)} д`
+}
+
 export function GuestLinksModal({ activeChatId, onClose }: Props) {
   const { t } = useTranslation()
   const router = useRouter()
@@ -37,6 +55,16 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  /**
+   * Options that the API has accepted since v3 and that nothing on screen could
+   * reach: how many guests a meeting link admits, and whether those guests may
+   * turn their camera and microphone on at all ("тихий гость" — the shape every
+   * webinar needs). Both are per-CREATION, so they sit next to the buttons that
+   * create.
+   */
+  const [seats, setSeats] = useState(0)
+  const [quiet, setQuiet] = useState(false)
+  const [revokingAll, setRevokingAll] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -59,7 +87,14 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
       setBusy(true)
       setError(null)
       try {
-        const invite = await createGuestInvite({ purpose, chatId })
+        const invite = await createGuestInvite({
+          purpose,
+          chatId,
+          // A temp chat is a tête-à-tête by definition — sending seats there is
+          // a 400 from the server, so don't. Zero seats means "server default".
+          ...(purpose === 'call' && seats > 0 ? { maxUses: seats } : {}),
+          ...(purpose === 'call' && quiet ? { canPublish: false } : {}),
+        })
         setInvites((prev) => [invite, ...prev])
         await copyLink(invite)
         setCopiedId(invite.id)
@@ -78,7 +113,7 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
         setBusy(false)
       }
     },
-    [onClose, router]
+    [onClose, router, seats, quiet]
   )
 
   const copyLink = async (invite: GuestInvite) => {
@@ -95,6 +130,21 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
       setInvites((prev) => prev.filter((i) => i.id !== id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ERROR')
+    }
+  }
+
+  const revokeAll = async () => {
+    if (revokingAll || invites.length === 0) return
+    if (!window.confirm(t('guest.revokeAllConfirm'))) return
+    setRevokingAll(true)
+    setError(null)
+    try {
+      await revokeAllGuestInvites()
+      setInvites([])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ERROR')
+    } finally {
+      setRevokingAll(false)
     }
   }
 
@@ -160,9 +210,55 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
           </button>
         </div>
 
+        {capabilities.calls ? (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border-strong bg-void/40 px-3 py-2">
+            <label className="flex items-center gap-2 text-xs text-text-muted">
+              {t('guest.seatsLabel')}
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={seats === 0 ? '' : seats}
+                placeholder={t('guest.seatsDefault')}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  setSeats(Number.isFinite(n) && n > 0 ? Math.min(50, Math.trunc(n)) : 0)
+                }}
+                className="w-16 rounded border border-border-strong bg-void px-2 py-1 text-right text-xs text-text-primary tabular-nums focus:border-neon-cyan focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-text-muted">
+              <input
+                type="checkbox"
+                checked={quiet}
+                onChange={(e) => setQuiet(e.target.checked)}
+                className="h-3.5 w-3.5 accent-[var(--neon-amber)]"
+              />
+              <MicOff className="h-3.5 w-3.5" aria-hidden />
+              {t('guest.quietGuest')}
+            </label>
+          </div>
+        ) : null}
+
         {error ? <div className="mt-2 text-xs text-neon-red">{error}</div> : null}
         {copiedId ? (
           <div className="mt-2 text-xs text-success">{t('guest.copied')}</div>
+        ) : null}
+
+        {invites.length > 0 ? (
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-text-muted">
+              {t('guest.revokeAllHint')}
+            </span>
+            <button
+              type="button"
+              disabled={revokingAll}
+              onClick={() => void revokeAll()}
+              className="shrink-0 rounded-lg border border-neon-red/40 px-2.5 py-1 text-[11px] text-neon-red transition hover:bg-neon-red/10 disabled:opacity-50"
+            >
+              {t('guest.revokeAll')}
+            </button>
+          </div>
         ) : null}
 
         <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
@@ -203,6 +299,20 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
                         }
                       >
                         {invite.used_count}/{invite.max_uses}
+                      </span>
+                      {/* A link whose guests cannot unmute looks identical to
+                          one whose guests can, and the difference only shows up
+                          once someone is in the room unable to speak. */}
+                      {invite.can_publish ? null : (
+                        <span
+                          className="flex shrink-0 items-center gap-0.5 rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-text-muted"
+                          title={t('guest.quietGuest')}
+                        >
+                          <MicOff className="h-3 w-3" aria-hidden />
+                        </span>
+                      )}
+                      <span className="shrink-0 text-[10px] text-text-muted">
+                        {formatExpiry(invite.expires_at, t('guest.expired'))}
                       </span>
                     </div>
                     <div className="truncate text-[11px] text-text-muted">

@@ -123,6 +123,12 @@ services:
       # Guest links are OPT-IN (the only unauthenticated app surface), so this
       # one defaults to 0 and is enabled only when explicitly ticked.
       FEATURE_GUESTS: ${OT_ENABLE_GUESTS:-0}
+      # First admin. On boot the API promotes this account to the `creator`
+      # group, but ONLY while the instance has no creator — so it is inert on
+      # every later start. It never creates the account: register in the app
+      # first. Without it the only way to get an admin panel on a fresh Lite
+      # install was hand-written SQL inside the db container.
+      ADMIN_BOOTSTRAP_USERNAME: ${OT_ADMIN_USERNAME:-}
       # Media (only used when media is on).
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_URL: ${OT_S3_PUBLIC_URL:-http://localhost:9000}

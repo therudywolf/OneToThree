@@ -576,3 +576,28 @@ describe('features', () => {
     assert.equal(on.OT_ENABLE_GUESTS, '1')
   })
 })
+
+
+/**
+ * The first-admin handle. This is the knob that decides whether a fresh Lite
+ * install has a usable admin panel at all, and it lands in a line-oriented
+ * `.env.lite` — so it has to survive being blank and must refuse a newline.
+ */
+describe('first-admin handle', () => {
+  const base = { cfg: computeModeConfig('local', {}), flags: Object.fromEntries(FEATURES.map((f) => [f.key, f.on ? '1' : '0'])) }
+
+  test('blank by default — the knob is opt-in, not a surprise promotion', () => {
+    assert.equal(buildEnv(base).OT_ADMIN_USERNAME, '')
+  })
+
+  test('a handle is written verbatim, trimmed', () => {
+    assert.equal(buildEnv({ ...base, adminUsername: '  rudywolf  ' }).OT_ADMIN_USERNAME, 'rudywolf')
+  })
+
+  test('a newline is refused rather than appended as another variable', () => {
+    assert.throws(
+      () => buildEnv({ ...base, adminUsername: 'me\nOT_ENABLE_GUESTS=1' }),
+      /line break/
+    )
+  })
+})

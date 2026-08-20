@@ -15,6 +15,7 @@ Practical guide: first deployment, updating production, and building the Android
   - [3 · Open firewall ports](#3--open-firewall-ports)
   - [4 · Launch](#4--launch)
   - [5 · Create the first admin](#5--create-the-first-admin)
+  - [5a - What you can change from the panel](#5a---what-you-can-change-from-the-panel)
 - [Updating](#updating)
   - [One-command update](#one-command-update)
   - [What happens internally](#what-happens-internally)
@@ -120,15 +121,52 @@ The script does everything on first run:
 ### 5 · Create the first admin
 
 1. Open `https://yourdomain.com` in a browser
-2. Register a new account
-3. Promote it to admin:
+2. **Register a new account** (the promotion below never creates one)
+3. Name it in the API environment and restart the API:
 
 ```bash
-docker exec -it forestmessenger-db-1 psql -U forest -d forest \
-  -c "UPDATE users SET role='admin' WHERE username='YOUR_USERNAME';"
+# .env.prod
+ADMIN_BOOTSTRAP_USERNAME=YOUR_USERNAME
 ```
 
+```bash
+docker compose -f docker-compose.prod.yml up -d api
+```
+
+On boot the API promotes that account to the **creator** group — provided the
+instance has no creator yet. Once one exists the variable is inert, so it is
+safe to leave in place (and tidier to remove).
+
 4. Log out and back in, then open `/admin`
+
+<details>
+<summary>Doing it by hand instead</summary>
+
+Set BOTH columns:
+
+```sql
+UPDATE users SET user_group='creator', role='admin' WHERE username='YOUR_USERNAME';
+```
+
+`role` is what opens the panel; `user_group` is what every privileged action
+checks. Setting `role` alone — as earlier revisions of this guide said —
+produces an admin who can open `/admin` and then gets `403 CREATOR_ONLY` from
+granting admin rights and from every instance setting. The panel's CONFIG tab
+says exactly that when it finds no creator.
+
+</details>
+
+### 5a - What you can change from the panel
+
+`/admin` -> **CONFIG** shows the build that is live, whether Postgres, Redis and
+LiveKit are actually reachable, and the runtime knobs: open registration, guest
+link TTL, meeting seats, temp-chat TTL, per-user link cap, and the server-wide
+guest cap. Each knob is an **override**: it wins over the environment variable
+shown next to it, and "Сбросить" deletes the override so `.env` is back in
+charge. Changes take effect within seconds — no restart.
+
+Feature flags (`FEATURE_*`) stay environment-only: they decide whether whole
+route groups are registered at boot, so the panel shows them read-only.
 
 ### Enabling guest links (optional, off by default)
 
@@ -145,7 +183,9 @@ One-time guest links (call guests + temp chats — see
    `/guest/*` is recommended — it is the only anonymous app surface.
    Consider a CrowdSec scenario for bursts of `POST /api/guest/knock` or
    `/api/guest/enter` from one IP.
-3. Lifetime and capacity tunables (env, with defaults):
+3. Lifetime and capacity tunables. The first five are also editable at
+   runtime in `/admin` -> CONFIG, where a panel override wins over the
+   environment until it is reset (env, with defaults):
 
    | Env | Default | What it bounds |
    |-----|---------|----------------|

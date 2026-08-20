@@ -27,6 +27,8 @@ import {
   type GuestPendingKnock,
 } from '@/lib/api/guest'
 import { useTranslation } from '@/hooks/use-translation'
+import { playKnockSound } from '@/lib/call-ringtones'
+import { useChatStore } from '@/store/chatStore'
 
 export type KnockCard = {
   id: string
@@ -38,6 +40,13 @@ export type KnockCard = {
 }
 
 const KNOCK_TTL_MS = 5 * 60_000
+
+/**
+ * How many knock cards may be on screen at once. Above this the overlay stops
+ * being a notification and becomes a wall: a ten-seat meeting filling up at
+ * once would otherwise cover the chat the host is standing in.
+ */
+const MAX_VISIBLE_CARDS = 3
 
 /**
  * Fold a hydration snapshot into the cards already on screen.
@@ -86,6 +95,7 @@ function knockExpiry(expiresAt: string | null | undefined, now: number): number 
 export function GuestKnockOverlay() {
   const { t } = useTranslation()
   const [knocks, setKnocks] = useState<KnockCard[]>([])
+  const soundEnabled = useChatStore((s) => s.chatSoundEnabled)
 
   const removeKnock = useCallback((id: string) => {
     setKnocks((prev) => prev.filter((k) => k.id !== id))
@@ -95,27 +105,33 @@ export function GuestKnockOverlay() {
     const unsubscribe = getFmSocket().subscribe((m) => {
       if (m.type === 'guest_knock') {
         const { knock_id: id, nickname, chat_id: chatId } = m
-        setKnocks((prev) =>
-          prev.some((k) => k.id === id)
-            ? prev
-            : [
-                ...prev,
-                {
-                  id,
-                  nickname,
-                  chatId: chatId ?? null,
-                  expiresAt: Date.now() + KNOCK_TTL_MS,
-                  busy: false,
-                  error: null,
-                },
-              ]
-        )
+        setKnocks((prev) => {
+          if (prev.some((k) => k.id === id)) return prev
+          // A knock is a person waiting behind a door with a five-minute
+          // window. The card alone only works if the host happens to be
+          // looking at this tab — which, since the host is usually the one who
+          // just sent the link somewhere else, is exactly when they are not.
+          // Unlike the message chime this fires even with the window focused:
+          // the card can be off-screen on a long chat list.
+          if (soundEnabled) playKnockSound()
+          return [
+            ...prev,
+            {
+              id,
+              nickname,
+              chatId: chatId ?? null,
+              expiresAt: Date.now() + KNOCK_TTL_MS,
+              busy: false,
+              error: null,
+            },
+          ]
+        })
       } else if (m.type === 'guest_knock_cancelled') {
         removeKnock(m.knock_id)
       }
     })
     return unsubscribe
-  }, [removeKnock])
+  }, [removeKnock, soundEnabled])
 
   // Hydration: the mount pull covers "host tapped the push", the connect edge
   // covers "the socket was down while a guest knocked".
@@ -194,9 +210,22 @@ export function GuestKnockOverlay() {
 
   if (knocks.length === 0) return null
 
+  // A meeting link seats up to fifty. Rendering one card per knock stacked them
+  // bottom-up until they covered the app the host is trying to use — and the
+  // oldest knock, the one closest to timing out, was the one pushed off screen.
+  // Show the oldest few (they expire first, so they are the urgent ones) and
+  // count the rest.
+  const visible = knocks.slice(0, MAX_VISIBLE_CARDS)
+  const hidden = knocks.length - visible.length
+
   return (
     <div className="fixed bottom-4 right-4 z-[95] flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-2">
-      {knocks.map((k) => (
+      {hidden > 0 ? (
+        <div className="rounded-lg border border-border-strong bg-surface-elevated/95 px-3 py-1.5 text-center text-xs text-text-muted shadow-xl backdrop-blur">
+          {t('guest.moreKnocks').replace('{n}', String(hidden))}
+        </div>
+      ) : null}
+      {visible.map((k) => (
         <div
           key={k.id}
           className="rounded-lg border border-neon-amber/40 bg-surface-elevated/95 p-3 shadow-xl backdrop-blur"

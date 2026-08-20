@@ -2,7 +2,7 @@
  * Admin API — only `users.role = 'admin'`. Grant that role manually in your database;
  * there is no automatic promotion or seed script in the application.
  */
-import { desc, eq, and, sql, isNull } from 'drizzle-orm'
+import { desc, eq, and, gt, sql, isNull } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import { z } from 'zod'
@@ -10,6 +10,7 @@ import { db } from '../db/index.js'
 import {
   adminAuditLog,
   devices,
+  guestInvites,
   loginEvents,
   pushSubscriptions,
   reports,
@@ -35,6 +36,14 @@ import {
   getTargetRatio,
   runOrphanAttachmentCleanup,
 } from '../lib/media-lru-evict.js'
+import {
+  coerceValue,
+  getSettingDef,
+  getSettingsSnapshot,
+  setSetting,
+} from '../lib/instance-settings.js'
+import { getLogCounters } from '../lib/log-counters.js'
+import { getRedis } from '../lib/redis.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
 /**
@@ -925,5 +934,183 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       .offset(offset)
 
     return reply.send({ entries: rows, total, limit, offset })
+  })
+
+  /**
+   * GET /api/admin/settings — every runtime knob with its whole resolution
+   * chain (built-in default → env → DB override → effective), plus the
+   * env-only feature flags rendered read-only next to them.
+   *
+   * The flags are here on purpose even though they cannot be changed from the
+   * panel: an operator debugging "why is there no call button" needs to see
+   * that FEATURE_CALLS is off, and the alternative was reading `.env` over SSH.
+   */
+  app.get('/settings', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    const settings = await getSettingsSnapshot()
+    return reply.send({
+      settings,
+      // Env-only, restart-required. `openRegistration` is deliberately absent:
+      // it lives in `settings` above, where it can actually be changed.
+      feature_flags: {
+        media: request.server.featureFlags.media,
+        calls: request.server.featureFlags.calls,
+        stickers: request.server.featureFlags.stickers,
+        gif: request.server.featureFlags.gif,
+        push: request.server.featureFlags.push,
+        twofa: request.server.featureFlags.twofa,
+        admin: request.server.featureFlags.admin,
+        groups: request.server.featureFlags.groups,
+        guests: request.server.featureFlags.guests,
+      },
+    })
+  })
+
+  /**
+   * PATCH /api/admin/settings — set or clear ONE override.
+   * Body: `{ key, value }`, where `value: null` deletes the override and hands
+   * the knob back to the environment.
+   *
+   * Creator-only, like admin grants: these knobs decide whether strangers can
+   * create accounts and how much of the server a guest link can spend. An
+   * admin who could quietly re-open registration is an escalation path.
+   */
+  app.patch('/settings', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    if (admin.group !== 'creator') {
+      return reply.status(403).send({ error: 'CREATOR_ONLY' })
+    }
+
+    const body = z
+      .object({
+        key: z.string().min(1).max(64),
+        value: z.union([z.boolean(), z.number(), z.null()]),
+      })
+      .safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const def = getSettingDef(body.data.key)
+    if (!def) return reply.status(404).send({ error: 'UNKNOWN_SETTING' })
+    if (body.data.value !== null && coerceValue(def, body.data.value) === undefined) {
+      return reply.status(400).send({ error: 'INVALID_VALUE' })
+    }
+
+    const effective = await setSetting(def.key, body.data.value, admin.id)
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'instance_setting_change',
+      detail: {
+        key: def.key,
+        requested: body.data.value,
+        effective,
+        cleared: body.data.value === null,
+      },
+    })
+
+    const settings = await getSettingsSnapshot()
+    return reply.send({
+      setting: settings.find((s) => s.key === def.key) ?? null,
+      settings,
+    })
+  })
+
+  /**
+   * GET /api/admin/instance — "what am I actually running", in one call.
+   *
+   * Everything here was previously only answerable by SSH-ing to the host:
+   * which build is live, whether Redis is really connected (the API falls back
+   * to in-memory stores and keeps serving), whether LiveKit is configured, and
+   * how many guests/links are alive right now.
+   */
+  app.get('/instance', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+
+    let dbOk = true
+    try {
+      await db.execute(sql`SELECT 1`)
+    } catch {
+      dbOk = false
+    }
+
+    const redis = getRedis()
+    let redisOk: boolean | null = null
+    if (redis) {
+      try {
+        // Bounded: a Redis that is unreachable rather than refusing does not
+        // reject the ping, it just never answers — and this is the health card
+        // an operator opens *because* something is wrong. Waiting forever to
+        // report "Redis is down" is the one behaviour this panel must not have.
+        redisOk =
+          (await Promise.race([
+            redis.ping(),
+            new Promise<string>((resolve) =>
+              setTimeout(() => resolve('TIMEOUT'), 1500).unref?.()
+            ),
+          ])) === 'PONG'
+      } catch {
+        redisOk = false
+      }
+    }
+
+    const guestsCounts = { active_guests: 0, live_invites: 0 }
+    if (request.server.featureFlags.guests) {
+      const now = new Date()
+      const [g] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(users)
+        .where(eq(users.userGroup, 'guest'))
+      const [inv] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(guestInvites)
+        .where(
+          and(
+            isNull(guestInvites.revokedAt),
+            gt(guestInvites.expiresAt, now),
+            sql`${guestInvites.usedCount} < ${guestInvites.maxUses}`
+          )
+        )
+      guestsCounts.active_guests = Number(g?.n ?? 0)
+      guestsCounts.live_invites = Number(inv?.n ?? 0)
+    }
+
+    // A server with no creator cannot grant or revoke admin rights, cannot
+    // change an instance setting, and gives its operator a panel that looks
+    // functional and refuses half of what it offers. Surfacing the count is
+    // what turns that into a fixable message instead of a mystery 403.
+    const [creators] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(users)
+      .where(eq(users.userGroup, 'creator'))
+
+    return reply.send({
+      version: process.env.APP_VERSION?.trim() || null,
+      commit: process.env.GIT_SHA?.trim() || null,
+      built_at: process.env.BUILT_AT?.trim() || null,
+      node_version: process.version,
+      uptime_ms: Math.round(process.uptime() * 1000),
+      health: {
+        db: dbOk,
+        // null = this instance runs without Redis at all (single-process
+        // in-memory fallbacks), which is legal for Lite and fatal for prod.
+        redis: redisOk,
+        livekit_configured: Boolean(
+          process.env.LIVEKIT_URL?.trim() &&
+            (process.env.LIVEKIT_API_KEY?.trim() ||
+              process.env.LIVEKIT_API_KEY_FILE?.trim())
+        ),
+      },
+      guests: guestsCounts,
+      creator_count: Number(creators?.n ?? 0),
+      // Warnings and errors this API process has logged since it started.
+      // The guest sweeper once failed on every tick for five days and the only
+      // trace was a log line nobody read; a number on the dashboard is what
+      // turns "remember to grep the logs after a deploy" into something an
+      // operator actually sees.
+      logs: getLogCounters(),
+    })
   })
 }

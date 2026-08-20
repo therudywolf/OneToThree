@@ -17,6 +17,13 @@ export type Capabilities = {
   admin: boolean
   groups: boolean
   /**
+   * Open self-registration. Unlike every other entry here this one is NOT a
+   * boot-time route gate — the server reads it per request from the instance
+   * settings, so an admin closing sign-ups in the panel reaches clients on
+   * their next capability probe rather than on the next restart.
+   */
+  openRegistration: boolean
+  /**
    * One-time guest links. OPT-IN, unlike everything else: the server enables
    * it explicitly (FEATURE_GUESTS=1) and the client must never fail-open into
    * showing guest-link UI against a server whose guest routes 404.
@@ -38,6 +45,7 @@ export const ALL_ON: Capabilities = {
   twofa: true,
   admin: true,
   groups: true,
+  openRegistration: true,
   // Deliberately fail-CLOSED (see the type doc). Not really "all on", but the
   // constant keeps its name as the canonical client default.
   guests: false,

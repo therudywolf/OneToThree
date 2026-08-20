@@ -43,6 +43,7 @@ import type {
 import { isGuestParticipant } from '@/lib/livekit-call-manager'
 import { toastError } from '@/store/toastStore'
 import { useTranslation } from '@/hooks/use-translation'
+import { GuestLanguageToggle } from '@/components/guest/guest-locale'
 import {
   applyPreferredAudioOutput,
   loadCamEffectImage,
@@ -92,10 +93,18 @@ export function CenterCard({
   return (
     <div className="flex min-h-dvh items-center justify-center bg-void px-4 py-6 text-text-primary">
       <div
-        className={`w-full rounded-2xl border border-border-strong bg-surface-elevated p-6 shadow-xl ${
+        className={`relative w-full rounded-2xl border border-border-strong bg-surface-elevated p-6 shadow-xl ${
           wide ? 'max-w-md' : 'max-w-sm'
         }`}
       >
+        {/*
+          The language switch lives HERE, on the shared card, so it is in the
+          same corner of every guest screen — entry, waiting, denied, expired.
+          A guest arrives from a link with no account and no settings menu; a
+          toggle that only appeared on one of eight screens would be worse than
+          none, because they would learn it exists and then not find it again.
+        */}
+        <GuestLanguageToggle className="absolute right-3 top-3" />
         {children}
       </div>
     </div>

@@ -45,6 +45,7 @@ import {
 import { generateTotpSecret, generateTotpUri, verifyTotp } from '../lib/totp.js'
 import { encryptTotpSecret, decryptTotpSecret } from '../lib/totp-crypto.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
+import { getBooleanSetting } from '../lib/instance-settings.js'
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -476,14 +477,20 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
         const clientDeviceKey = (request.headers['x-client-device-id'] as string | undefined)?.trim() ?? null
 
-        // FEATURE_OPEN_REGISTRATION=off closes account creation. A supplied
+        // Open registration off closes account creation. A supplied
         // public_key_jwk that does not match the stored one gets a UNIFORM
         // rejection for both "free username" and "taken, different key" — the
         // response reveals only the global policy, never per-account state.
         // Login (no public_key_jwk) is untouched; so is re-verifying with the
         // account's own key.
+        //
+        // Read through the instance settings, not the boot-time flag snapshot:
+        // an admin closing sign-ups from the panel has to take effect on the
+        // NEXT request, not after the operator remembers to restart the API.
+        // With no override in the database this is exactly
+        // `FEATURE_OPEN_REGISTRATION` again.
         if (
-          !request.server.featureFlags.openRegistration &&
+          !(await getBooleanSetting('open_registration')) &&
           public_key_jwk?.trim() &&
           !(existing && safeEqualUtf8(public_key_jwk.trim(), existing.publicKeyJwk))
         ) {

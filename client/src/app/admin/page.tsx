@@ -42,9 +42,10 @@ import {
   type UserGroup,
   type AssignableGroup,
 } from '@/lib/api/admin'
+import { InstanceSettingsPanel } from '@/components/admin/instance-settings-panel'
 import { useThemeStore } from '@/store/themeStore'
 
-type Tab = 'nodes' | 'incidents' | 'login-events' | 'system' | 'storage' | 'audit'
+type Tab = 'nodes' | 'incidents' | 'login-events' | 'system' | 'storage' | 'audit' | 'config'
 
 const NODES_PAGE_SIZE = 100
 const REPORTS_PAGE_SIZE = 100
@@ -471,6 +472,7 @@ export default function AdminPage() {
     { id: 'incidents', label: 'INCIDENTS', count: incidents.filter(r => r.status === 'open').length || undefined },
     { id: 'login-events', label: 'LOGIN_LOG', count: loginEvents.length || undefined },
     { id: 'audit', label: 'AUDIT_LOG' },
+    { id: 'config', label: 'CONFIG' },
   ]
 
   return (
@@ -832,6 +834,14 @@ export default function AdminPage() {
 
         {/* AUDIT_LOG TAB — Track E */}
         {tab === 'audit' && <AuditLogPanel onError={(msg) => setErrorLog(msg)} />}
+
+        {/* CONFIG TAB — runtime instance settings + "what am I running" */}
+        {tab === 'config' && (
+          <InstanceSettingsPanel
+            viewerGroup={user.group ?? 'regular'}
+            onError={(msg) => setErrorLog(msg)}
+          />
+        )}
 
         {/* LOGIN EVENTS TAB */}
         {tab === 'login-events' && (

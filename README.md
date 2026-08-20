@@ -121,8 +121,11 @@ Prebuilt clients for each release are on **[GitHub Releases](https://github.com/
 | Windows | `OneToThree_<ver>_x64-setup.exe` |
 | Linux (Debian/Ubuntu) | `OneToThree_<ver>_amd64.deb` |
 | Linux (portable) | `OneToThree_<ver>_amd64.AppImage` |
+| macOS | `OneToThree_<ver>_aarch64.dmg` |
 
-Each ships a `.sha256` sidecar. Or just open the web app (installable PWA). All
+Each ships a `.sha256` sidecar. **Desktop bundles are not code-signed**, so
+Windows SmartScreen and macOS Gatekeeper will warn on first launch — verify
+the checksum and open it anyway, or build your own (below). Or just open the web app (installable PWA). All
 prebuilt clients target the hosted **onetothree.ru**; point a build at your own
 Lite server with `build:selfhost` (see the [desktop](#desktop-app) / roadmap notes).
 
@@ -212,15 +215,30 @@ The credentials are shown **only once** during the first run. Copy them to a sec
 ### 6. Register and become admin
 
 1. Open `https://your-domain.com` in a browser
-2. Register a new account
-3. Promote yourself to admin:
+2. Register a new account — the promotion below never creates one
+3. Name that account in the API environment and restart the API:
+
+```bash
+# .env.prod
+ADMIN_BOOTSTRAP_USERNAME=yourusername
+```
+
+On boot the API promotes it to the `creator` group, but only while the instance
+has no creator yet — after that the variable is inert, so it is safe to leave.
+
+Equivalent by hand (set **both** columns — `role` opens the panel, `user_group`
+is what every privileged action checks):
 
 ```bash
 docker exec -it forestmessenger-db-1 psql -U forest -d forest \
   -c "UPDATE users SET user_group = 'creator', role = 'admin' WHERE username = 'yourusername';"
 ```
 
-4. Open `/admin` while logged in
+4. Open `/admin` while logged in. The **CONFIG** tab there shows the live build,
+   the health of Postgres/Redis/LiveKit, and the runtime knobs (open
+   registration, guest-link TTL, meeting seats, guest caps) — each one an
+   override on top of the matching environment variable, changeable without a
+   restart.
 
 ---
 

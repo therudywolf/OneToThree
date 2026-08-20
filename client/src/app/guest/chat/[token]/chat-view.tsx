@@ -17,14 +17,19 @@ import {
   type FormEvent,
 } from 'react'
 import type { GuestChatMessage } from '@/lib/guest-chat/transport'
+import { GuestLanguageToggle } from '@/components/guest/guest-locale'
+import { useTranslation } from '@/hooks/use-translation'
 
-function formatTime(iso: string): string {
+function formatTime(iso: string, locale: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  // Follow the chosen language: a clock rendered `ru-RU` for a reader who
+  // switched the page to English is the same mismatch as untranslated text.
+  return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 }
 
 function MessageBubble({ m }: { m: GuestChatMessage }) {
+  const { module, t } = useTranslation()
   return (
     <div className={`flex ${m.mine ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -35,9 +40,7 @@ function MessageBubble({ m }: { m: GuestChatMessage }) {
         }`}
       >
         {m.failed ? (
-          <p className="italic text-text-muted">
-            Не удалось расшифровать сообщение
-          </p>
+          <p className="italic text-text-muted">{t('gs.decryptFailed')}</p>
         ) : (
           <p className="whitespace-pre-wrap break-words">{m.text}</p>
         )}
@@ -50,7 +53,7 @@ function MessageBubble({ m }: { m: GuestChatMessage }) {
             m.mine ? 'opacity-70' : 'text-text-muted'
           }`}
         >
-          {formatTime(m.createdAt)}
+          {formatTime(m.createdAt, module === 'ru' ? 'ru-RU' : 'en-GB')}
         </p>
       </div>
     </div>
@@ -73,6 +76,7 @@ export function GuestChatView({
   onSend: (text: string) => void
   onLeave: () => void
 }) {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState('')
   const [confirmLeave, setConfirmLeave] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -99,12 +103,13 @@ export function GuestChatView({
       <header className="flex items-center justify-between gap-3 border-b border-border-strong px-4 py-3">
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold">
-            {hostName} · временный чат
+            {t('gs.tempChatHeader').replace('{host}', hostName)}
           </h1>
           <p className="truncate text-[11px] text-text-muted">
-            Сквозное шифрование · чат исчезнет вместе с этой вкладкой
+            {t('gs.e2eeNote')}
           </p>
         </div>
+        <GuestLanguageToggle className="shrink-0" />
         {confirmLeave ? (
           <div className="flex shrink-0 items-center gap-2">
             <button
@@ -112,14 +117,14 @@ export function GuestChatView({
               onClick={onLeave}
               className="rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-[var(--on-primary)] transition hover:opacity-90"
             >
-              Точно удалить
+              {t('gs.confirmDelete')}
             </button>
             <button
               type="button"
               onClick={() => setConfirmLeave(false)}
               className="rounded-lg border border-border-strong px-3 py-1.5 text-xs text-text-muted transition hover:bg-[var(--state-hover)]"
             >
-              Отмена
+              {t('gs.cancelShort')}
             </button>
           </div>
         ) : (
@@ -128,7 +133,7 @@ export function GuestChatView({
             onClick={() => setConfirmLeave(true)}
             className="shrink-0 rounded-lg border border-[color-mix(in_srgb,var(--danger)_45%,transparent)] bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-[color-mix(in_srgb,var(--danger)_26%,transparent)]"
           >
-            Выйти и удалить
+            {t('gs.leaveAndDelete')}
           </button>
         )}
       </header>
@@ -145,7 +150,7 @@ export function GuestChatView({
       >
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-text-muted">
-            Пока сообщений нет — напишите первым
+            {t('gs.noMessages')}
           </div>
         ) : (
           messages.map((m) => <MessageBubble key={m.id} m={m} />)
@@ -160,7 +165,7 @@ export function GuestChatView({
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Сообщение…"
+          placeholder={t('gs.messagePlaceholder')}
           maxLength={4000}
           autoFocus
           className="min-w-0 flex-1 rounded-xl border border-border-strong bg-surface-elevated px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
@@ -170,7 +175,7 @@ export function GuestChatView({
           disabled={sending || draft.trim().length === 0}
           className="shrink-0 rounded-xl bg-on-surface px-4 py-2.5 text-sm font-medium text-void transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {sending ? 'Отправка…' : 'Отправить'}
+          {sending ? t('gs.sending') : t('gs.send')}
         </button>
       </form>
     </div>

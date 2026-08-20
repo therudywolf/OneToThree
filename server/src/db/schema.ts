@@ -1000,3 +1000,30 @@ export const guestInvites = pgTable(
     expiresAtIdx: index('guest_invites_expires_at_idx').on(t.expiresAt),
   })
 )
+
+/**
+ * Runtime instance settings — the operator knobs the admin panel can change
+ * without an SSH session and a container restart.
+ *
+ * Deliberately sparse: a row exists ONLY for a knob an admin has actually
+ * overridden. The effective value is `override ?? env ?? built-in default`
+ * (server/src/lib/instance-settings.ts), so an untouched instance behaves
+ * exactly as it did when every knob was env-only, and clearing an override in
+ * the panel hands the knob back to `.env`.
+ *
+ * `value` is jsonb rather than text so a boolean stays a boolean — the reader
+ * validates against the registry anyway, but a typed column keeps a hand-edited
+ * row from silently becoming the string "false" (which is truthy).
+ */
+export const instanceSettings = pgTable('instance_settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  // SET NULL, like admin_audit_log: the setting must outlive the admin who set
+  // it, or purging an operator would take the instance's configuration with it.
+  updatedBy: uuid('updated_by').references(() => users.id, {
+    onDelete: 'set null',
+  }),
+})

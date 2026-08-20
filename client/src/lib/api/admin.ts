@@ -577,3 +577,132 @@ export async function fetchAdminAuditLog(page?: AdminPage): Promise<AdminAuditLo
     offset: data.offset ?? page?.offset ?? 0,
   }
 }
+
+/* ────────────── Instance settings + instance info ────────────── */
+
+export type SettingValue = boolean | number
+
+/**
+ * One runtime knob with its whole resolution chain. The panel shows all four
+ * layers on purpose: an operator who cannot see that `effective` came from the
+ * environment rather than from a default has no way to tell "nobody set this"
+ * apart from "someone set it to exactly the default".
+ */
+export type AdminSettingRow = {
+  key: string
+  type: 'boolean' | 'integer'
+  group: 'registration' | 'guests' | 'media'
+  /** Name of the environment variable this knob falls back to. */
+  env: string
+  default_value: SettingValue
+  /** What env (or the built-in default) says — where a reset lands. */
+  env_value: SettingValue
+  /** null = not overridden; the knob is following the environment. */
+  override: SettingValue | null
+  effective: SettingValue
+  min?: number
+  max?: number
+  restart_required?: boolean
+}
+
+export type AdminSettingsResponse = {
+  settings: AdminSettingRow[]
+  /** Env-only, restart-required; rendered read-only next to the live knobs. */
+  feature_flags: Record<string, boolean>
+}
+
+export async function fetchAdminSettings(): Promise<AdminSettingsResponse> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/settings`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as Partial<AdminSettingsResponse> & {
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_SETTINGS_FAILED')
+  return {
+    settings: data.settings ?? [],
+    feature_flags: data.feature_flags ?? {},
+  }
+}
+
+/**
+ * Set one override, or clear it with `value: null` — which is NOT the same as
+ * writing the default: clearing deletes the row and hands the knob back to the
+ * environment, so a later `.env` edit takes effect again.
+ */
+export async function patchAdminSetting(
+  key: string,
+  value: SettingValue | null
+): Promise<AdminSettingsResponse> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/settings`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    settings?: AdminSettingRow[]
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_SETTING_PATCH_FAILED')
+  return { settings: data.settings ?? [], feature_flags: {} }
+}
+
+export type AdminInstanceInfo = {
+  version: string | null
+  commit: string | null
+  built_at: string | null
+  node_version: string
+  uptime_ms: number
+  health: {
+    db: boolean
+    /** null = this instance runs with no Redis at all (in-memory fallbacks). */
+    redis: boolean | null
+    livekit_configured: boolean
+  }
+  guests: { active_guests: number; live_invites: number }
+  creator_count: number
+  /**
+   * Warnings and errors this API process has logged since it started. A healthy
+   * instance sits near zero; a background job failing on a timer climbs in a
+   * way an operator cannot miss — which is the whole point, since the last time
+   * that happened the only trace was a log line nobody read for five days.
+   */
+  logs: {
+    warn: number
+    error: number
+    lastWarn: string | null
+    lastError: string | null
+    lastAt: number | null
+    uptimeMs: number
+  }
+}
+
+export async function fetchAdminInstance(): Promise<AdminInstanceInfo> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/instance`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as Partial<AdminInstanceInfo> & {
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_INSTANCE_FAILED')
+  return {
+    version: data.version ?? null,
+    commit: data.commit ?? null,
+    built_at: data.built_at ?? null,
+    node_version: data.node_version ?? '',
+    uptime_ms: data.uptime_ms ?? 0,
+    health: data.health ?? { db: false, redis: null, livekit_configured: false },
+    guests: data.guests ?? { active_guests: 0, live_invites: 0 },
+    creator_count: data.creator_count ?? 0,
+    logs:
+      data.logs ?? {
+        warn: 0,
+        error: 0,
+        lastWarn: null,
+        lastError: null,
+        lastAt: null,
+        uptimeMs: 0,
+      },
+  }
+}

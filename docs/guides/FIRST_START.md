@@ -264,7 +264,19 @@ If anything fails, check the [Troubleshooting](../../README.md#troubleshooting) 
 ## 10. Make Yourself Admin
 
 After registering your account, promote it to the owner (top `creator` tier).
-`user_group` is the source of truth and `role` is derived from it, so set both:
+The simplest way is to name it in the API environment and restart the API:
+
+```bash
+# .env.prod
+ADMIN_BOOTSTRAP_USERNAME=yourusername
+```
+
+The promotion happens on boot and only while the instance has no creator yet —
+after that the variable does nothing, so it is safe to leave in place. It never
+creates an account: register first.
+
+Or do it by hand. `user_group` is the source of truth and `role` is derived from
+it, so set both:
 
 ```bash
 docker exec -it forestmessenger-db-1 psql -U forest -d forest \

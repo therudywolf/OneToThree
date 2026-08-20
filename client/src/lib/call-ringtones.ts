@@ -129,6 +129,42 @@ export function playNotificationSound(): void {
   }
 }
 
+/**
+ * A guest is knocking to be let into a meeting.
+ *
+ * Distinct from the message chime on purpose — a knock has a five-minute
+ * window and then the person outside gives up, so it must not sound like one
+ * more message arriving. Two short rising pulses, doorbell-shaped.
+ *
+ * `knock.mp3` is OPTIONAL: no scheme ships one today, so the normal path is the
+ * synth fallback below. Dropping the file into `/public/sounds/<scheme>/` is
+ * enough to replace it, with no code change.
+ */
+export function playKnockSound(): void {
+  if (typeof window === 'undefined') return
+  const synth = () => {
+    const stopHigh = playFallbackPulse(660, 260)
+    window.setTimeout(stopHigh, 620)
+  }
+  try {
+    const el = new Audio(resolveSoundPath('knock.mp3'))
+    el.volume = 0.5
+    void el.play().catch((e: unknown) => {
+      // A blocked autoplay is not a missing sound — the browser refused to make
+      // ANY noise, and the synth fallback would be refused too.
+      if (
+        e instanceof DOMException &&
+        (e.name === 'NotAllowedError' || e.name === 'AbortError')
+      ) {
+        return
+      }
+      synth()
+    })
+  } catch {
+    synth()
+  }
+}
+
 /** Resume AudioContext after a user gesture (iOS). Safe to call repeatedly. */
 export async function resumeAudioContextAfterGesture(): Promise<void> {
   try {

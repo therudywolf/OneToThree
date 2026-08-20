@@ -169,6 +169,20 @@ if (!process.env.VITEST_REDIS_URL) {
       await sql`CREATE INDEX attachments_chat_id_idx ON attachments (chat_id)`
     }
 
+    // Runtime instance settings (drizzle 0065). A dev database that predates
+    // it would otherwise fail every admin-settings test with "relation does not
+    // exist" rather than the assertion the test is about.
+    if (!await hasTable('instance_settings')) {
+      await sql`
+        CREATE TABLE instance_settings (
+          key text PRIMARY KEY NOT NULL,
+          value jsonb NOT NULL,
+          updated_at timestamp with time zone DEFAULT now() NOT NULL,
+          updated_by uuid REFERENCES users(id) ON DELETE set null
+        )
+      `
+    }
+
     await sql`
       ALTER TABLE users
       DROP CONSTRAINT IF EXISTS users_last_seen_privacy_check

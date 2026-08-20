@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useCapability } from '@/components/capabilities-provider'
 import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
 import { recoverWithPhrase } from '@/lib/auth/crypto-recover'
 import { ensureClientDeviceId, clearSessionApi } from '@/lib/api/auth'
@@ -76,6 +77,14 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
   const { t } = useTranslation()
   const router = useRouter()
   const { user, loading: authLoading, refresh } = useAuth()
+  /**
+   * Sign-ups can be closed from the admin panel. Without this the "create
+   * account" tab stayed on screen on a closed instance and the whole flow —
+   * pick a handle, invent a vault password, confirm it, accept the terms —
+   * ended in a bare `REGISTRATION_DISABLED`. Fails OPEN (the probe defaults to
+   * true), so a hiccup can never hide sign-up on a server that allows it.
+   */
+  const registrationOpen = useCapability('openRegistration')
 
   const [handle, setHandle]         = useState('')
   const [vaultPassword, setVaultPassword] = useState('')
@@ -245,6 +254,10 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
     setInfoLog(null)
     setIsBusy(true)
     try {
+      if (mode === 'GENESIS' && !registrationOpen) {
+        setErrorLog(t('login.registrationClosed'))
+        return
+      }
       if (mode === 'GENESIS' && vaultPassword !== confirmVaultPassword) {
         setErrorLog(t('login.passwordMismatch'))
         return
@@ -569,13 +582,18 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                 ['ACCESS', t('login.tabSignIn')] as const,
                 ['GENESIS', t('login.tabCreate')] as const,
               ]).map(([m, label]) => {
+                // The tab stays rendered but inert on a closed instance rather
+                // than disappearing: someone who followed a /register link needs
+                // to see WHY the option is gone, not a silently different screen.
                 const active = mode === m
                 return (
                   <button
                     key={m}
                     type="button"
+                    disabled={m === 'GENESIS' && !registrationOpen}
                     onClick={() => {
                       if (mode === m) return
+                      if (m === 'GENESIS' && !registrationOpen) return
                       setMode(m)
                       resetForm()
                       // Keep the address bar truthful so /login and /register are
@@ -607,8 +625,18 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
 
             <div className="space-y-6">
 
+              {/* Sign-ups closed by the operator — say so before the form. */}
+              {mode === 'GENESIS' && !registrationOpen && (
+                <div
+                  role="status"
+                  className={`leading-relaxed ${type.hint} ${isMd3 ? 'rounded-2xl border border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-4 text-warning' : 'border border-neon-amber/40 bg-neon-amber/5 p-3 text-neon-amber'}`}
+                >
+                  {t('login.registrationClosed')}
+                </div>
+              )}
+
               {/* TOS при регистрации — короткая строка + раскрываемые детали */}
-              {mode === 'GENESIS' && (
+              {mode === 'GENESIS' && registrationOpen && (
                 <div className={`leading-relaxed ${type.hint} ${isMd3 ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] p-4 text-text-muted' : isRetro ? 'p13-classic-input p-3' : 'border border-border-strong bg-void/50 p-3 text-text-muted'}`}>
                   <p>{t('login.tosShort')}</p>
                   <details className="mt-1">

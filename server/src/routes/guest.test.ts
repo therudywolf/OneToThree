@@ -220,6 +220,53 @@ describe('guest mode', () => {
     expect(after.body.error).toBe('INVITE_NOT_FOUND')
   })
 
+  it('"revoke all" closes every one of my links and nobody else’s', async () => {
+    if (!dbAvailable) return
+    const mine = await createUser(`gm-revall-${uniq()}`)
+    const other = await createUser(`gm-revall-other-${uniq()}`)
+    const myCookie = await sessionCookie(mine)
+    const otherCookie = await sessionCookie(other)
+
+    const tokens: string[] = []
+    for (let i = 0; i < 3; i++) {
+      const created = await request(onApp!.server)
+        .post('/api/guest-invites')
+        .set('Cookie', myCookie)
+        .send({ purpose: 'call' })
+      expect(created.status).toBe(200)
+      tokens.push(created.body.token)
+    }
+    const theirs = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', otherCookie)
+      .send({ purpose: 'call' })
+    expect(theirs.status).toBe(200)
+
+    const wiped = await request(onApp!.server)
+      .delete('/api/guest-invites')
+      .set('Cookie', myCookie)
+    expect(wiped.status).toBe(200)
+    expect(wiped.body.revoked).toBe(3)
+
+    for (const token of tokens) {
+      const res = await request(onApp!.server).post('/api/guest/resolve').send({ token })
+      expect(res.status).toBe(404)
+    }
+    // The blast radius stops at the caller: someone else's live link is
+    // untouched, which is the one thing a "revoke all" must never get wrong.
+    const stillAlive = await request(onApp!.server)
+      .post('/api/guest/resolve')
+      .send({ token: theirs.body.token })
+    expect(stillAlive.status).toBe(200)
+
+    // Idempotent: nothing left to revoke is 0, not an error.
+    const again = await request(onApp!.server)
+      .delete('/api/guest-invites')
+      .set('Cookie', myCookie)
+    expect(again.status).toBe(200)
+    expect(again.body.revoked).toBe(0)
+  })
+
   it('resolve and knock draw on separate rate-limit budgets, from the app-wide limiter', async () => {
     // Guests share an IP constantly (one office, one flat, one conference
     // room), and a joining guest spends resolve + knock. With both on ONE
@@ -608,27 +655,36 @@ describe('guest mode', () => {
   it('FEATURE_OPEN_REGISTRATION=0: new-account verify gets a uniform 403, no row is created', async () => {
     if (!dbAvailable) return
     const username = `gm-reg-${uniq()}`
-    const challenge = await request(regClosedApp!.server)
-      .post('/api/auth/challenge')
-      .send({ username })
-    expect(challenge.status).toBe(200)
-    const verify = await request(regClosedApp!.server)
-      .post('/api/auth/verify')
-      .set('X-Client-Device-Id', 'test-device-0001')
-      .send({
-        username,
-        nonce: challenge.body.nonce,
-        signature: 'junk',
-        public_key_jwk: VALID_EC_JWK,
-      })
-    expect(verify.status).toBe(403)
-    expect(verify.body.error).toBe('REGISTRATION_DISABLED')
-    const [row] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(sql`lower(${users.username}) = ${username.toLowerCase()}`)
-      .limit(1)
-    expect(row).toBeUndefined()
+    // The gate is read PER REQUEST now (lib/instance-settings.ts), not frozen
+    // into a per-app snapshot at buildApp() — an admin closing sign-ups from
+    // the panel must not need a restart. So the variable has to be set while
+    // the request runs, not merely while the instance was constructed.
+    process.env.FEATURE_OPEN_REGISTRATION = '0'
+    try {
+      const challenge = await request(regClosedApp!.server)
+        .post('/api/auth/challenge')
+        .send({ username })
+      expect(challenge.status).toBe(200)
+      const verify = await request(regClosedApp!.server)
+        .post('/api/auth/verify')
+        .set('X-Client-Device-Id', 'test-device-0001')
+        .send({
+          username,
+          nonce: challenge.body.nonce,
+          signature: 'junk',
+          public_key_jwk: VALID_EC_JWK,
+        })
+      expect(verify.status).toBe(403)
+      expect(verify.body.error).toBe('REGISTRATION_DISABLED')
+      const [row] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(sql`lower(${users.username}) = ${username.toLowerCase()}`)
+        .limit(1)
+      expect(row).toBeUndefined()
+    } finally {
+      delete process.env.FEATURE_OPEN_REGISTRATION
+    }
   })
 
   it('guest invites capped per user', async () => {

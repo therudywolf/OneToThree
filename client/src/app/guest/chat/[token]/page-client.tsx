@@ -24,7 +24,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
 } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { guestEnter, guestLeave, resolveGuestToken } from '@/lib/api/guest'
@@ -48,6 +47,13 @@ import {
   type GuestChatMessage,
 } from '@/lib/guest-chat/transport'
 import { GuestChatSocket } from '@/lib/guest-chat/socket'
+// The same card and spinner the /guest/call screens use. They were duplicated
+// here with the comment "same look as /guest/call", which is exactly the shape
+// that drifts: the shared one has since grown the language toggle every guest
+// screen needs.
+import { CenterCard, Spinner } from '@/components/guest/livekit-room-stage'
+import { useGuestLocaleBootstrap } from '@/components/guest/guest-locale'
+import { useTranslation } from '@/hooks/use-translation'
 import { GuestChatView } from './chat-view'
 
 // ─── Stages ─────────────────────────────────────────────────────────────────
@@ -66,32 +72,13 @@ type Stage =
   | { kind: 'session-ended' }
   | { kind: 'error'; message: string }
 
-// ─── Small UI atoms (same look as /guest/call) ──────────────────────────────
-
-function CenterCard({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex min-h-dvh items-center justify-center bg-void px-4 text-text-primary">
-      <div className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface-elevated p-6 shadow-xl">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function Spinner() {
-  return (
-    <div
-      className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-text-primary"
-      aria-label="Загрузка"
-    />
-  )
-}
-
 // ─── Page client ────────────────────────────────────────────────────────────
 
 export function GuestChatClient({ routeToken }: { routeToken: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { t } = useTranslation()
+  useGuestLocaleBootstrap()
   // Static export ships only /guest/chat/_ — accept ?token= there.
   const token =
     routeToken && routeToken !== '_'
@@ -224,7 +211,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
         } else {
           setStage({
             kind: 'error',
-            message: 'Не удалось открыть чат. Обновите страницу и попробуйте снова.',
+            message: t('gs.chatOpenFailed'),
           })
         }
       }
@@ -283,7 +270,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
       e.preventDefault()
       const name = nickname.trim()
       if (name.length < 1 || name.length > 32) {
-        setFormError('Имя должно быть от 1 до 32 символов')
+        setFormError(t('gs.nameLength'))
         return
       }
       setBusy(true)
@@ -314,13 +301,13 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
         const code = err instanceof Error ? err.message : ''
         switch (code) {
           case 'NICKNAME_TAKEN':
-            setFormError('Это имя занято — выберите другое')
+            setFormError(t('gs.nameTaken'))
             break
           case 'INVALID_NICKNAME':
-            setFormError('Недопустимое имя — используйте от 1 до 32 символов')
+            setFormError(t('gs.nameInvalid'))
             break
           case 'GUEST_CAPACITY':
-            setFormError('Сервер сейчас не принимает гостей — попробуйте позже')
+            setFormError(t('gs.serverFullGuests'))
             break
           case 'INVITE_NOT_FOUND':
             setStage({ kind: 'invalid' })
@@ -329,7 +316,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
             setStage({ kind: 'taken' })
             break
           default:
-            setFormError('Не удалось войти — попробуйте ещё раз')
+            setFormError(t('gs.enterFailed'))
         }
       } finally {
         setBusy(false)
@@ -356,7 +343,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
         if (isGuestSessionDead(err)) {
           endSession()
         } else {
-          setNotice('Сообщение не отправлено — проверьте соединение и попробуйте ещё раз')
+          setNotice(t('gs.sendFailed'))
         }
       } finally {
         setSending(false)
@@ -386,8 +373,8 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
           <Spinner />
           <p className="text-sm text-text-muted">
             {stage.kind === 'loading'
-              ? 'Проверяем приглашение…'
-              : 'Входим в чат…'}
+              ? t('gs.checkingInvite')
+              : t('gs.enteringChat')}
           </p>
         </div>
       </CenterCard>
@@ -397,12 +384,9 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'invalid') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">
-          Ссылка недействительна или истекла
-        </h1>
+        <h1 className="text-lg font-semibold">{t('gs.linkInvalidTitle')}</h1>
         <p className="mt-2 text-sm text-text-muted">
-          Ссылка одноразовая: если чат уже открывали или срок вышел, попросите
-          пригласившего вас человека прислать новую.
+          {t('gs.chatLinkInvalidBody')}
         </p>
       </CenterCard>
     )
@@ -411,11 +395,8 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'taken') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Этой ссылкой уже воспользовались</h1>
-        <p className="mt-2 text-sm text-text-muted">
-          Ссылка одноразовая, и чат по ней уже открыли. Попросите пригласившего
-          вас человека прислать новую.
-        </p>
+        <h1 className="text-lg font-semibold">{t('gs.linkUsedTitle')}</h1>
+        <p className="mt-2 text-sm text-text-muted">{t('gs.linkUsedBody')}</p>
       </CenterCard>
     )
   }
@@ -423,13 +404,15 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'form') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Временный чат с {hostName}</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Представьтесь, чтобы начать переписку.
-        </p>
+        <h1 className="text-lg font-semibold">
+          {t('gs.tempChatWith').replace('{host}', hostName)}
+        </h1>
+        <p className="mt-1 text-sm text-text-muted">{t('gs.introduceChat')}</p>
         <form onSubmit={(e) => void submitEnter(e)} className="mt-4 space-y-3">
           <label className="block">
-            <span className="mb-1 block text-sm text-text-muted">Ваше имя</span>
+            <span className="mb-1 block text-sm text-text-muted">
+              {t('gs.yourName')}
+            </span>
             <input
               type="text"
               value={nickname}
@@ -439,7 +422,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
               }}
               maxLength={32}
               autoFocus
-              placeholder="Например, Аня"
+              placeholder={t('gs.namePlaceholder')}
               className="w-full rounded-lg border border-border-strong bg-void px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
             />
           </label>
@@ -453,11 +436,10 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
             disabled={busy || nickname.trim().length === 0}
             className="w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? 'Входим…' : 'Войти'}
+            {busy ? t('gs.entering') : t('gs.enter')}
           </button>
           <p className="text-xs leading-relaxed text-text-muted">
-            Чат существует, пока открыта эта вкладка. Закроете — вернуться будет
-            нельзя.
+            {t('gs.tabWarning')}
           </p>
         </form>
       </CenterCard>
@@ -467,8 +449,8 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'deleted') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Чат удалён</h1>
-        <p className="mt-2 text-sm text-text-muted">Вкладку можно закрыть.</p>
+        <h1 className="text-lg font-semibold">{t('gs.chatDeletedTitle')}</h1>
+        <p className="mt-2 text-sm text-text-muted">{t('gs.chatDeletedBody')}</p>
       </CenterCard>
     )
   }
@@ -476,11 +458,8 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'session-ended') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Сессия гостя завершена</h1>
-        <p className="mt-2 text-sm text-text-muted">
-          Временный чат больше недоступен. Чтобы продолжить общение, попросите
-          новую ссылку.
-        </p>
+        <h1 className="text-lg font-semibold">{t('gs.sessionEndedTitle')}</h1>
+        <p className="mt-2 text-sm text-text-muted">{t('gs.sessionEndedBody')}</p>
       </CenterCard>
     )
   }
@@ -488,7 +467,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'error') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Что-то пошло не так</h1>
+        <h1 className="text-lg font-semibold">{t('gs.somethingWrong')}</h1>
         <p className="mt-2 text-sm text-text-muted">{stage.message}</p>
       </CenterCard>
     )

@@ -180,13 +180,20 @@ async function main() {
     line('\n(Self-signed HTTPS: your browser will warn once — accept it to proceed. To')
     line(' silence it + enable media, install Caddy\'s local CA on each device.)')
   }
-  line(`\n✓ Up. Open ${cfg.origin} , register the first account, then make yourself owner:`)
-  // One line: a backslash continuation is bash syntax and does not survive a
-  // copy-paste into PowerShell or cmd, which is where half of these installs run.
-  line(
-    `  docker compose --env-file .env.lite -f docker-compose.lite.yml exec db ` +
-      `psql -U forest -d forest -c "UPDATE users SET user_group='creator', role='admin' WHERE username='YOURNAME';"`
-  )
+  if (adminUsername) {
+    line(`\n✓ Up. Open ${cfg.origin} and register as "${adminUsername}".`)
+    line('  Then restart the API once — it promotes that account to owner on boot:')
+    line('    docker compose --env-file .env.lite -f docker-compose.lite.yml restart api')
+    line('  (Registered before this install? Then it is already the owner.)')
+  } else {
+    line(`\n✓ Up. Open ${cfg.origin} , register the first account, then make yourself owner:`)
+    // One line: a backslash continuation is bash syntax and does not survive a
+    // copy-paste into PowerShell or cmd, which is where half of these installs run.
+    line(
+      `  docker compose --env-file .env.lite -f docker-compose.lite.yml exec db ` +
+        `psql -U forest -d forest -c "UPDATE users SET user_group='creator', role='admin' WHERE username='YOURNAME';"`
+    )
+  }
 }
 
 main().catch((e) => {

@@ -180,6 +180,26 @@ export async function revokeGuestInvite(id: string): Promise<void> {
   await jsonOrThrow<{ ok: boolean }>(res, 'REVOKE_FAILED')
 }
 
+/**
+ * Revoke every live link at once. Returns how many were still open, so the UI
+ * can say "отозвано 7" instead of a silent refresh — the difference matters
+ * when the user pressed it because a link leaked.
+ *
+ * Revoking stops NEW guests from entering; it does not end a meeting already in
+ * progress (for that, kick the guests who are in it).
+ */
+export async function revokeAllGuestInvites(): Promise<number> {
+  const res = await fetchWithTimeout(`${API_URL}/guest-invites`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  const data = await jsonOrThrow<{ ok: boolean; revoked?: number }>(
+    res,
+    'REVOKE_ALL_FAILED'
+  )
+  return data.revoked ?? 0
+}
+
 export type GuestPendingKnock = {
   knock_id: string
   nickname: string

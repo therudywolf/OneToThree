@@ -242,7 +242,7 @@ export function readExistingEnv(repo) {
  * Pass `existing` (from {@link readExistingEnv}) to keep the credentials the
  * running volumes were created with — see PERSISTENT_SECRETS.
  */
-export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = null, existing = {} }) {
+export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = null, existing = {}, adminUsername = '' }) {
   const env = {
     OT_MODE: cfg.mode,
     OT_ORIGIN: cfg.origin,
@@ -273,6 +273,14 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     OT_ENABLE_2FA: flags['2FA'],
     OT_ENABLE_GUESTS: flags.GUESTS,
     OT_ENABLE_OPEN_REGISTRATION: flags.OPEN_REGISTRATION,
+    // Handle of the account the API promotes to `creator` on boot, while there
+    // is no creator yet. Blank is fine — it just leaves the promotion to the
+    // psql one-liner the installer prints.
+    //
+    // Single-line-checked like every other operator-supplied value: `.env.lite`
+    // is line-oriented, so a handle carrying a newline would let the GUI wizard
+    // append arbitrary variables (the same hole the domain field was fixed for).
+    OT_ADMIN_USERNAME: assertSingleLine('admin handle', adminUsername || '').trim(),
     // Without this the API keeps its `origin_safe` default, where
     // /call/config reports `livekit_enabled: false` regardless of the three
     // vars below — and the client takes the WebSocket audio relay without ever

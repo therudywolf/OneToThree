@@ -45,18 +45,26 @@ import { RESERVED_NICKNAMES } from '../lib/nickname.js'
 import { areOnline, broadcastToUsers } from '../ws/registry.js'
 import { sendNativePushToUser, sendPushToUser } from '../lib/push.js'
 import { purgeGuestUser } from '../lib/guest-purge.js'
+import { getIntegerSetting } from '../lib/instance-settings.js'
 
-// ─── Knobs (env, defaults per concept §6.4) ─────────────────────────────────
-
-const LINK_TTL_HOURS = Math.max(1, Number(process.env.GUEST_LINK_TTL_HOURS ?? 24))
-const MAX_LINKS_PER_USER = Math.max(1, Number(process.env.GUEST_MAX_LINKS_PER_USER ?? 20))
-const MAX_ACTIVE_GUESTS = Math.max(1, Number(process.env.GUEST_MAX_ACTIVE ?? 50))
-const GUEST_CHAT_TTL_HOURS = Math.max(1, Number(process.env.GUEST_CHAT_TTL_HOURS ?? 12))
+// ─── Knobs (concept §6.4) ────────────────────────────────────────
+//
+// Read PER REQUEST through the instance settings (DB override ?? env ?? default,
+// see lib/instance-settings.ts) instead of once at module load: these are the
+// knobs an operator most often wants to turn without a redeploy — seats on a
+// meeting, how long a link lives, how many guests the server will host at once.
+// With no override in the database each one resolves to exactly the environment
+// variable it always read.
+//
+// The rate-limit budgets below are deliberately NOT in that set: they are
+// consumed once when the limiter is registered, so a live value would show a
+// number in the panel that the limiter is not using.
+const linkTtlHours = () => getIntegerSetting('guest_link_ttl_hours')
+const maxLinksPerUser = () => getIntegerSetting('guest_max_links_per_user')
+const maxActiveGuests = () => getIntegerSetting('guest_max_active')
+const guestChatTtlHours = () => getIntegerSetting('guest_chat_ttl_hours')
 /** Default seats on a meeting link — a meeting is not a tête-à-tête. */
-const MEETING_DEFAULT_SEATS = Math.min(
-  50,
-  Math.max(1, Number(process.env.GUEST_MEETING_SEATS ?? 10))
-)
+const meetingDefaultSeats = () => getIntegerSetting('guest_meeting_seats')
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
@@ -78,7 +86,7 @@ const createInviteSchema = z.object({
   purpose: z.enum(['call', 'chat']),
   chat_id: z.string().uuid().optional(),
   can_publish: z.boolean().optional().default(true),
-  /** Seats. Omitted → 1 for a temp chat, MEETING_DEFAULT_SEATS for a meeting. */
+  /** Seats. Omitted → 1 for a temp chat, the meeting-seats setting otherwise. */
   max_uses: z.number().int().min(1).max(50).optional(),
 })
 
@@ -385,7 +393,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         .select({ n: sql<number>`count(*)::int` })
         .from(users)
         .where(and(eq(users.userGroup, 'guest'), gt(users.guestExpiresAt, new Date())))
-      if (Number(activeCnt?.n ?? 0) >= MAX_ACTIVE_GUESTS) {
+      if (Number(activeCnt?.n ?? 0) >= (await maxActiveGuests())) {
         return reply.status(503).send({ error: 'GUEST_CAPACITY' })
       }
 
@@ -397,7 +405,9 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(409).send({ error: 'INVITE_FULL' })
       }
 
-      const expiresAt = new Date(Date.now() + GUEST_CHAT_TTL_HOURS * 3600_000)
+      const expiresAt = new Date(
+        Date.now() + (await guestChatTtlHours()) * 3600_000
+      )
       let guestId: string | null = null
       let guestUsername = ''
       let chatId = ''
@@ -531,7 +541,8 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
     // A temp chat is a tête-à-tête (one guest, ever). A meeting link seats
     // several — the host still approves each guest individually.
     const maxUses =
-      parsed.data.max_uses ?? (purpose === 'chat' ? 1 : MEETING_DEFAULT_SEATS)
+      parsed.data.max_uses ??
+      (purpose === 'chat' ? 1 : await meetingDefaultSeats())
     if (purpose === 'chat' && maxUses !== 1) {
       return reply.status(400).send({ error: 'CHAT_LINK_IS_SINGLE_SEAT' })
     }
@@ -569,7 +580,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
           gt(guestInvites.expiresAt, new Date())
         )
       )
-    if (Number(cnt?.n ?? 0) >= MAX_LINKS_PER_USER) {
+    if (Number(cnt?.n ?? 0) >= (await maxLinksPerUser())) {
       return reply.status(429).send({ error: 'TOO_MANY_LINKS' })
     }
 
@@ -584,7 +595,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         roomId,
         canPublish,
         maxUses,
-        expiresAt: new Date(Date.now() + LINK_TTL_HOURS * 3600_000),
+        expiresAt: new Date(Date.now() + (await linkTtlHours()) * 3600_000),
       })
       .returning()
     if (!row) return reply.status(500).send({ error: 'INSERT_FAILED' })
@@ -640,6 +651,32 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
       .returning({ id: guestInvites.id })
     if (updated.length === 0) return reply.status(404).send({ error: 'NOT_FOUND' })
     return reply.send({ ok: true })
+  })
+
+  /**
+   * Revoke EVERY live link of mine in one action.
+   *
+   * Promised by the concept doc since v1 («Отозвать все» одним действием) and
+   * never built: a user who had handed out a dozen links — the exact situation
+   * where "kill them all now" matters — had to click revoke twelve times, on a
+   * list that shifts under the cursor as rows disappear. Same authority and
+   * same effect as the single-link revoke, applied to the whole set.
+   */
+  app.delete('/guest-invites', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    if (user.group === 'guest') return reply.status(403).send({ error: 'GUEST_FORBIDDEN' })
+    const revoked = await db
+      .update(guestInvites)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(guestInvites.createdBy, user.id),
+          isNull(guestInvites.revokedAt)
+        )
+      )
+      .returning({ id: guestInvites.id })
+    return reply.send({ ok: true, revoked: revoked.length })
   })
 
   /** Approve a pending knock — creator only. Burns the link, mints the grant. */

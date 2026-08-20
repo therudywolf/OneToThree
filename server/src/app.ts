@@ -35,6 +35,8 @@ import { readFmSessionToken } from './lib/session-cookie.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { getFeatureFlags, type FeatureFlags } from './lib/feature-flags.js'
+import { getBooleanSetting } from './lib/instance-settings.js'
+import { logCounterHooks } from './lib/log-counters.js'
 import { requireSecret } from './lib/read-secret.js'
 import { getRedis } from './lib/redis.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
@@ -175,7 +177,11 @@ export async function buildApp() {
   }
 
   const app = Fastify({
-    logger: true,
+    // The hook counts warnings and errors as they are written (see
+    // lib/log-counters.ts). A background job failing on every tick used to be
+    // invisible for days because the only trace was a `"level":40` line nobody
+    // read; the admin panel now shows the tally.
+    logger: { hooks: logCounterHooks },
     trustProxy,
     // Default body cap; routes that need more (vault sync, prekey upload)
     // bump it via per-route `bodyLimit`. The Fastify default of 1 MiB was
@@ -576,7 +582,16 @@ export async function buildApp() {
   // Exposed at root (infra/healthcheck convention, next to /version) AND under
   // /api so the same-origin web client — whose base is `<origin>/api` — can reach
   // it without a dedicated host.
-  const capabilitiesHandler = async () => ({ features: flags })
+  // `openRegistration` is the one flag an admin can flip at runtime (it gates a
+  // branch, not a route group), so it is read from the instance settings rather
+  // than the boot snapshot — otherwise closing sign-ups in the panel left every
+  // client still showing the "create account" tab until the next restart.
+  const capabilitiesHandler = async () => ({
+    features: {
+      ...flags,
+      openRegistration: await getBooleanSetting('open_registration'),
+    },
+  })
   app.get('/capabilities', capabilitiesHandler)
   app.get('/api/capabilities', capabilitiesHandler)
 

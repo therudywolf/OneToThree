@@ -121,6 +121,8 @@
       <div class="fld"><label>Push contact address (a VAPID keypair is generated for you)</label>
         <input id="pushSubject" value="mailto:admin@localhost"></div>
     </div>
+    <div class="fld"><label>Handle of the first admin (register it in the app afterwards) &mdash; blank to skip</label>
+      <input id="adminUser" placeholder="yourhandle"></div>
   </div>
 
   <div class="card">
@@ -229,6 +231,7 @@ $('#btnGen').addEventListener('click', async () => {
     s3PublicUrl: $('#s3Url').value,
     livekit: { url: $('#lkUrl').value, key: $('#lkKey').value, secret: $('#lkSecret').value },
     vapidSubject: $('#pushSubject').value,
+    adminUsername: $('#adminUser').value,
   }
   try {
     const r = await api('/api/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })

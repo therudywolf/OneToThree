@@ -36,7 +36,9 @@ import {
   Spinner,
   type LiveKitGrant,
 } from '@/components/guest/livekit-room-stage'
+import { useGuestLocaleBootstrap } from '@/components/guest/guest-locale'
 import { MediaCheck } from '@/components/media/media-check'
+import { useTranslation } from '@/hooks/use-translation'
 
 // ─── Stages ─────────────────────────────────────────────────────────────────
 
@@ -60,6 +62,11 @@ type Stage =
 export function GuestCallClient({ routeToken }: { routeToken: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { t } = useTranslation()
+  // A guest has no settings screen and no account — the only language signal
+  // there is comes from their browser. Applied once, and only if nothing was
+  // ever chosen in this browser.
+  useGuestLocaleBootstrap()
   // Static export ships only /guest/call/_ — accept ?token= there (join/[code]
   // pattern).
   const token =
@@ -193,7 +200,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
       e.preventDefault()
       const name = nickname.trim()
       if (name.length < 1 || name.length > 32) {
-        setFormError('Имя должно быть от 1 до 32 символов')
+        setFormError(t('gs.nameLength'))
         return
       }
       setBusy(true)
@@ -207,13 +214,13 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
         const code = err instanceof Error ? err.message : ''
         switch (code) {
           case 'NICKNAME_TAKEN':
-            setFormError('Это имя занято — выберите другое')
+            setFormError(t('gs.nameTaken'))
             break
           case 'INVALID_NICKNAME':
-            setFormError('Недопустимое имя — используйте от 1 до 32 символов')
+            setFormError(t('gs.nameInvalid'))
             break
           case 'KNOCK_PENDING':
-            setFormError('Запрос уже отправлен — подождите немного')
+            setFormError(t('gs.knockPending'))
             break
           case 'CALLS_NOT_AVAILABLE':
             setStage({ kind: 'calls-unavailable' })
@@ -226,13 +233,13 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
             setStage({ kind: 'full' })
             break
           default:
-            setFormError('Не удалось отправить запрос — попробуйте ещё раз')
+            setFormError(t('gs.knockFailed'))
         }
       } finally {
         setBusy(false)
       }
     },
-    [nickname, token, startPolling]
+    [nickname, token, startPolling, t]
   )
 
   const cancelWaiting = useCallback(() => {
@@ -251,7 +258,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-4">
           <Spinner />
-          <p className="text-sm text-text-muted">Проверяем приглашение…</p>
+          <p className="text-sm text-text-muted">{t('gs.checkingInvite')}</p>
         </div>
       </CenterCard>
     )
@@ -260,11 +267,9 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'invalid') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">
-          Ссылка недействительна или истекла
-        </h1>
+        <h1 className="text-lg font-semibold">{t('gs.linkInvalidTitle')}</h1>
         <p className="mt-2 text-sm text-text-muted">
-          Попросите пригласившего вас человека прислать новую ссылку.
+          {t('gs.callLinkInvalidBody')}
         </p>
       </CenterCard>
     )
@@ -273,11 +278,8 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'full') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Во встрече не осталось мест</h1>
-        <p className="mt-2 text-sm text-text-muted">
-          Ссылка рабочая — просто заняты все места. Попробуйте ещё раз, когда
-          кто-нибудь выйдет, или попросите пригласившего прислать новую.
-        </p>
+        <h1 className="text-lg font-semibold">{t('gs.meetingFullTitle')}</h1>
+        <p className="mt-2 text-sm text-text-muted">{t('gs.meetingFullBody')}</p>
       </CenterCard>
     )
   }
@@ -285,11 +287,9 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'calls-unavailable') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">
-          Звонки на этом сервере недоступны
-        </h1>
+        <h1 className="text-lg font-semibold">{t('gs.callsUnavailableTitle')}</h1>
         <p className="mt-2 text-sm text-text-muted">
-          Присоединиться к встрече по этой ссылке сейчас нельзя.
+          {t('gs.callsUnavailableBody')}
         </p>
       </CenterCard>
     )
@@ -298,10 +298,10 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'form') {
     return (
       <CenterCard wide>
-        <h1 className="text-lg font-semibold">Встреча у {hostName}</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Представьтесь, чтобы постучаться в комнату.
-        </p>
+        <h1 className="text-lg font-semibold">
+          {t('gs.meetingWithHost').replace('{host}', hostName)}
+        </h1>
+        <p className="mt-1 text-sm text-text-muted">{t('gs.introduceKnock')}</p>
         {/* Camera and microphone are checked BEFORE the knock: the host is
             about to be interrupted, and discovering a dead microphone after
             they let you in wastes their time, not just yours. */}
@@ -311,7 +311,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
         <form onSubmit={(e) => void submitKnock(e)} className="mt-4 space-y-3">
           <label className="block">
             <span className="mb-1 block text-sm text-text-muted">
-              Ваше имя
+              {t('gs.yourName')}
             </span>
             <input
               type="text"
@@ -322,7 +322,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
               }}
               maxLength={32}
               autoFocus
-              placeholder="Например, Аня"
+              placeholder={t('gs.namePlaceholder')}
               className="w-full rounded-lg border border-border-strong bg-void px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
             />
           </label>
@@ -336,7 +336,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
             disabled={busy || nickname.trim().length === 0}
             className="w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? 'Отправляем…' : 'Постучаться'}
+            {busy ? t('gs.knocking') : t('gs.knock')}
           </button>
         </form>
       </CenterCard>
@@ -349,14 +349,14 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
         <div className="flex flex-col items-center gap-4 py-2 text-center">
           <Spinner />
           <p className="text-sm text-text-muted">
-            Ждём, пока {hostName} вас впустит…
+            {t('gs.waitingForHost').replace('{host}', hostName)}
           </p>
           <button
             type="button"
             onClick={cancelWaiting}
             className="rounded-lg border border-border-strong px-4 py-2 text-sm text-text-muted transition hover:bg-[var(--state-hover)]"
           >
-            Отменить
+            {t('gs.cancel')}
           </button>
         </div>
       </CenterCard>
@@ -366,9 +366,9 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'no-answer') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Никто не ответил</h1>
+        <h1 className="text-lg font-semibold">{t('gs.noAnswerTitle')}</h1>
         <p className="mt-2 text-sm text-text-muted">
-          {hostName} не отреагировал(а) на ваш запрос вовремя.
+          {t('gs.noAnswerBody').replace('{host}', hostName)}
         </p>
         <button
           type="button"
@@ -378,7 +378,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
           }}
           className="mt-4 w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90"
         >
-          Попробовать ещё раз
+          {t('gs.tryAgain')}
         </button>
       </CenterCard>
     )
@@ -387,9 +387,9 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'denied') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Вам отказали во входе</h1>
+        <h1 className="text-lg font-semibold">{t('gs.deniedTitle')}</h1>
         <p className="mt-2 text-sm text-text-muted">
-          {hostName} не впустил(а) вас в эту встречу.
+          {t('gs.deniedBody').replace('{host}', hostName)}
         </p>
       </CenterCard>
     )
@@ -399,14 +399,10 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">
-          {stage.left
-            ? 'Встреча завершена'
-            : 'Вы покинули встречу или были отключены'}
+          {stage.left ? t('gs.meetingEnded') : t('gs.youLeft')}
         </h1>
         <p className="mt-2 text-sm text-text-muted">
-          {stage.left
-            ? 'Можете закрыть вкладку.'
-            : 'Если это произошло по ошибке — попросите новую ссылку.'}
+          {stage.left ? t('gs.canCloseTab') : t('gs.ifMistake')}
         </p>
       </CenterCard>
     )
@@ -415,7 +411,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   if (stage.kind === 'error') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Не получилось подключиться</h1>
+        <h1 className="text-lg font-semibold">{t('gs.connectFailedTitle')}</h1>
         <p className="mt-2 text-sm text-text-muted">{stage.message}</p>
       </CenterCard>
     )
@@ -425,7 +421,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   return (
     <LiveKitRoomStage
       grant={stage.grant}
-      title={`Встреча у ${hostName}`}
+      title={t('gs.meetingWithHost').replace('{host}', hostName)}
       selfIsGuest
       onEnded={(left) => setStage({ kind: 'ended', left })}
       onError={(message) => setStage({ kind: 'error', message })}

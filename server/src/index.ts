@@ -3,6 +3,7 @@
 
 import 'dotenv/config'
 import { buildApp } from './app.js'
+import { bootstrapFirstAdmin } from './lib/admin-bootstrap.js'
 import { scheduleMediaRetentionPurge } from './lib/media-retention-purge.js'
 import { scheduleOrphanAttachmentCleanup } from './lib/media-lru-evict.js'
 import { purgeExpiredBurnMessages } from './lib/burn-at.js'
@@ -11,6 +12,9 @@ import { clearInstancePresence, closeWsFanout } from './ws/registry.js'
 
 async function main() {
   const app = await buildApp()
+  // Before the first request: a fresh install has no admin at all, and the only
+  // documented cure was hand-writing SQL. Inert once any creator exists.
+  await bootstrapFirstAdmin(app.log)
   const port = Number(process.env.PORT) || 8080
   await app.listen({ port, host: '0.0.0.0' })
   scheduleMediaRetentionPurge(app.log)

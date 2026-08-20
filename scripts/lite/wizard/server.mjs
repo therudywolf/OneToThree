@@ -131,6 +131,10 @@ const server = createServer(async (req, res) => {
           livekit: b.livekit || {},
           vapid,
           existing,
+          // Same knob as the CLI: the API promotes this handle to `creator` on
+          // boot while the instance has none. buildEnv single-line-checks it,
+          // so a pasted newline is a 400 here, not an injected env line.
+          adminUsername: b.adminUsername || '',
         })
         writeArtifacts(REPO, env, renderCaddyfile(cfg))
       } catch (e) {

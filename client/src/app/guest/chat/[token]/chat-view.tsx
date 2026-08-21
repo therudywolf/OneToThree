@@ -18,15 +18,11 @@ import {
 } from 'react'
 import type { GuestChatMessage } from '@/lib/guest-chat/transport'
 import { GuestLanguageToggle } from '@/components/guest/guest-locale'
+// The same formatter the main chat uses: it does the BCP-47 mapping, handles an
+// unparseable date, and marks the day rollover — which a temp chat reaches,
+// since `guest_chat_ttl_hours` is panel-tunable well past midnight.
+import { formatMessageTimestamp } from '@/lib/timestamp-format'
 import { useTranslation } from '@/hooks/use-translation'
-
-function formatTime(iso: string, locale: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  // Follow the chosen language: a clock rendered `ru-RU` for a reader who
-  // switched the page to English is the same mismatch as untranslated text.
-  return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
-}
 
 function MessageBubble({ m }: { m: GuestChatMessage }) {
   const { module, t } = useTranslation()
@@ -53,7 +49,7 @@ function MessageBubble({ m }: { m: GuestChatMessage }) {
             m.mine ? 'opacity-70' : 'text-text-muted'
           }`}
         >
-          {formatTime(m.createdAt, module === 'ru' ? 'ru-RU' : 'en-GB')}
+          {formatMessageTimestamp(m.createdAt, module)}
         </p>
       </div>
     </div>

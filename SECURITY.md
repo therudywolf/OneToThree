@@ -218,6 +218,11 @@ knob is `DB override ?? env ?? built-in default`.
   so the variable alone grants nobody access — whoever holds that account's keys
   is still the only one who can sign in as it. It is the same trust as the psql
   `UPDATE` it replaces, minus the shell.
+  It promotes whoever **owns that handle at the time of the restart**, which is
+  a real ordering requirement on an instance with open sign-ups: naming a handle
+  nobody has registered leaves it claimable, and the claimant is who the next
+  restart promotes. Register first, or set the variable while registration is
+  closed. Each boot where the handle does not resolve logs a warning saying so.
 
 ## Key rotation
 

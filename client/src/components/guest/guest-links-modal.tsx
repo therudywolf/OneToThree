@@ -30,20 +30,31 @@ type Props = {
 }
 
 /**
- * "через 3 ч" / "через 40 мин" for a link's TTL.
+ * How much of a link's TTL is left — "3 ч" / "40 мин" / "2 д".
  *
- * The list showed no expiry at all, so a link that was about to die looked
- * exactly like a fresh one — and the whole point of these links is that they
- * are short-lived.
+ * The list showed no expiry at all, so a link about to die looked exactly like
+ * a fresh one, and the whole point of these links is that they are short-lived.
+ *
+ * The unit suffixes come from the dictionary, not from this function: the modal
+ * is otherwise fully translated, and hardcoding them here rendered "40 мин" in
+ * the middle of an English screen — now the common case, since guests default
+ * to their browser's language.
  */
-function formatExpiry(iso: string, expiredLabel: string): string {
-  const ms = new Date(iso).getTime() - Date.now()
-  if (!Number.isFinite(ms) || ms <= 0) return expiredLabel
+export function formatExpiry(
+  iso: string,
+  labels: { expired: string; minutes: string; hours: string; days: string },
+  now: number = Date.now()
+): string {
+  const ms = new Date(iso).getTime() - now
+  if (!Number.isFinite(ms) || ms <= 0) return labels.expired
   const mins = Math.round(ms / 60_000)
-  if (mins < 60) return `${mins} мин`
+  // A link with 20 seconds left is alive; rounding it to "0 мин" made it
+  // indistinguishable from a dead one at a glance.
+  if (mins < 1) return `<1 ${labels.minutes}`
+  if (mins < 60) return `${mins} ${labels.minutes}`
   const hours = Math.round(mins / 60)
-  if (hours < 48) return `${hours} ч`
-  return `${Math.round(hours / 24)} д`
+  if (hours < 48) return `${hours} ${labels.hours}`
+  return `${Math.round(hours / 24)} ${labels.days}`
 }
 
 export function GuestLinksModal({ activeChatId, onClose }: Props) {
@@ -312,7 +323,12 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
                         </span>
                       )}
                       <span className="shrink-0 text-[10px] text-text-muted">
-                        {formatExpiry(invite.expires_at, t('guest.expired'))}
+                        {formatExpiry(invite.expires_at, {
+                          expired: t('guest.expired'),
+                          minutes: t('guest.unitMinutes'),
+                          hours: t('guest.unitHours'),
+                          days: t('guest.unitDays'),
+                        })}
                       </span>
                     </div>
                     <div className="truncate text-[11px] text-text-muted">

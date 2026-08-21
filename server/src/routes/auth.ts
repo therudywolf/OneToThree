@@ -489,10 +489,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         // NEXT request, not after the operator remembers to restart the API.
         // With no override in the database this is exactly
         // `FEATURE_OPEN_REGISTRATION` again.
+        // Order matters: the free sync checks go first, so the awaited
+        // settings read runs only when a public key was actually supplied —
+        // a pure login (the hottest auth path) must not couple its latency to
+        // the instance-settings query that only registration needs.
         if (
-          !(await getBooleanSetting('open_registration')) &&
           public_key_jwk?.trim() &&
-          !(existing && safeEqualUtf8(public_key_jwk.trim(), existing.publicKeyJwk))
+          !(existing && safeEqualUtf8(public_key_jwk.trim(), existing.publicKeyJwk)) &&
+          !(await getBooleanSetting('open_registration'))
         ) {
           await deletePending(username)
           return reply.status(403).send({ error: 'REGISTRATION_DISABLED' })

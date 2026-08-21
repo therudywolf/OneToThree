@@ -123,6 +123,9 @@ services:
       # Guest links are OPT-IN (the only unauthenticated app surface), so this
       # one defaults to 0 and is enabled only when explicitly ticked.
       FEATURE_GUESTS: ${OT_ENABLE_GUESTS:-0}
+      # Prometheus scrape auth — advanced, env-only (no installer question).
+      # Unset = GET /metrics does not exist. See docs/OPS.md -> Metrics.
+      METRICS_TOKEN: ${OT_METRICS_TOKEN:-}
       # First admin. On boot the API promotes this account to the `creator`
       # group, but ONLY while the instance has no creator — so it is inert on
       # every later start. It never creates the account: register in the app

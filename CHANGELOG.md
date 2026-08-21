@@ -121,6 +121,23 @@ have a face and, more to the point, a working composer).
   bury the app under them, pushing the oldest (nearest to expiry) off the top.
 
 ### Changed
+- `/api/admin/instance` runs its five health probes together instead of one
+  after another — it is the card an operator opens *because* something is wrong,
+  and a hung Redis used to spend its whole 1.5s budget before the counts were
+  even issued. Its guest count now uses the same predicate the capacity limiter
+  enforces, and its build/commit come from the same resolution `/api/version`
+  and `/metrics` use rather than a weaker copy that reported `null`.
+- `openRegistration` is gone from the boot-time `FeatureFlags` snapshot. Every
+  consumer reads it per request from the instance settings, and leaving a typed,
+  autocompleting copy behind was an invitation to silently read a value the
+  admin panel had since changed.
+- The guest language rule moved from a hook call copied into each page to a
+  `/guest` layout, so a new guest route inherits it by existing; the shared
+  guest card moved out of the call-stage module into a leaf component, so the
+  temp-chat screens stop importing the whole call pipeline to render a card.
+- One place now owns the `user_group` → `role` mapping, instead of three writers
+  computing it inline behind a comment; the meeting-seat ceiling comes from the
+  settings registry instead of a third hardcoded `50`.
 - **`SECURITY.md` covers guest links, the runtime settings, and key rotation** —
   including the one that must never be rotated in place (`TOTP_WRAP_KEY`, which
   wraps every stored TOTP secret). Two stale claims were corrected: 1:1 chats DO
@@ -176,6 +193,39 @@ have a face and, more to the point, a working composer).
   tables are left alone — dropping those is a separate, irreversible decision.)
 
 ### Fixed
+- **The Lite CLI installer crashed on success.** It referenced an
+  `adminUsername` that was never declared, so the run ended in a `ReferenceError`
+  immediately after `docker compose up` reported the stack healthy — and it
+  never asked for the handle, so the first-admin variable was always blank from
+  the CLI path. `scripts/` had no lint at all, which is why a `no-undef` shipped;
+  it does now (`npm run lint:scripts`, wired into `npm run lint`).
+- **The Lite restore could report success over a database it never replaced.**
+  psql exits 0 after a flood of failed statements, and nothing was reading the
+  errors; a failed `stop api web` also let the replay run underneath a live API.
+  The dump is now taken with `--clean --if-exists`, the stop is checked, and the
+  replay's stderr is inspected — tolerating only the `DROP ROLE` of the
+  connected role, which every same-cluster `pg_dumpall` restore emits.
+- **The first-admin variable could promote a squatted handle.** It matches on
+  the handle, so naming one that nobody has registered on an open-registration
+  instance left it claimable. The ordering requirement is now stated in the code,
+  the installer prompt, DEPLOY, LITE and SECURITY, and the every-boot warning
+  spells out the exposure.
+- **Environment integers were silently clamped** to the new settings-registry
+  maxima, so an install running `GUEST_LINK_TTL_HOURS=8760` would quietly drop
+  to 30 days — and the panel would show the clamped value as if `.env` said it.
+  The ceilings are now generous enough not to touch realistic configs, and a
+  clamp warns once, naming both numbers.
+- **A `METRICS_TOKEN` under 16 characters disabled `/metrics` with no
+  diagnostic**, which is the same silent-misconfiguration shape the endpoint was
+  written to avoid. It says so now.
+- **Guest link TTLs rendered in Russian on an English screen** ("40 мин" amid
+  English UI — the common case now that guests follow their browser), and a link
+  with seconds left rounded to "0 мин", indistinguishable from a dead one.
+- **The local Playwright suite could not start on Windows.** Its Node-side
+  probes fetched `localhost`, which resolves to `::1` while Docker publishes on
+  IPv4 only, so global setup aborted the whole run with "API not reachable"
+  against a perfectly healthy stack — the same trap the Chromium flag in
+  `playwright.config.ts` already worked around.
 - **The production web image was built from a lockfile nobody had updated in a
   very long time.** `npm audit` at the repository root reported 0 vulnerabilities
   and was telling the truth about a file that image never reads: `web` builds

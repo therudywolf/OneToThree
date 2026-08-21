@@ -20,7 +20,7 @@ async function assertSessionCookieIsBrowserSafe(apiBase: string): Promise<void> 
 
   let setCookies: string[]
   try {
-    const r = await fetch(`${apiBase}/api/auth/clear-session`, {
+    const r = await fetch(`${ipv4(apiBase)}/api/auth/clear-session`, {
       method: 'POST',
       signal: AbortSignal.timeout(5000),
     })
@@ -66,6 +66,19 @@ async function assertSessionCookieIsBrowserSafe(apiBase: string): Promise<void> 
 const DOCKER_E2E_BASE_URL = 'http://localhost:8090'
 
 /**
+ * Node-side twin of the `--host-resolver-rules=MAP localhost 127.0.0.1` flag
+ * playwright.config.ts already passes to Chromium, and for the same reason:
+ * Windows resolves `localhost` to ::1 first, and Docker Desktop's published
+ * port answers IPv4 only, so Node's fetch dies with ECONNRESET against a stack
+ * that is fully healthy — the setup then aborts the whole suite with "API not
+ * reachable". Only these plumbing probes are rewritten; the specs keep the
+ * `localhost` origin the web image was built for.
+ */
+function ipv4(url: string): string {
+  return url.replace('://localhost', '://127.0.0.1')
+}
+
+/**
  * The URL the warm-up must probe: the one Playwright is about to drive.
  *
  * This used to read `E2E_BASE_URL`, which is set nowhere in the repo — so the
@@ -104,7 +117,7 @@ async function warmWebServer(baseUrl: string): Promise<void> {
   let lastFailure: unknown
   while (Date.now() < deadline && quick < 2) {
     const started = Date.now()
-    const ok = await fetch(`${baseUrl}/login`, { signal: AbortSignal.timeout(20_000) })
+    const ok = await fetch(`${ipv4(baseUrl)}/login`, { signal: AbortSignal.timeout(20_000) })
       .then((r) => {
         if (!r.ok) lastFailure = `HTTP ${r.status}`
         return r.ok
@@ -137,7 +150,7 @@ async function globalSetup(config: FullConfig) {
   const healthUrl =
     process.env.PLAYWRIGHT_API_HEALTH ?? 'http://127.0.0.1:8080/health'
   try {
-    const r = await fetch(healthUrl, { signal: AbortSignal.timeout(5000) })
+    const r = await fetch(ipv4(healthUrl), { signal: AbortSignal.timeout(5000) })
     if (!r.ok) {
       throw new Error(`HTTP ${r.status}`)
     }

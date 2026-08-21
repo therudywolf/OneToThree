@@ -2,7 +2,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useGuestLocaleBootstrap } from './guest-locale'
-import { useLocaleStore } from '@/store/localeStore'
+import { LOCALE_PERSIST_KEY, useLocaleStore } from '@/store/localeStore'
 
 /**
  * A guest arrives from a pasted link with no account, no settings screen and no
@@ -13,8 +13,6 @@ import { useLocaleStore } from '@/store/localeStore'
  *  2. With no stored choice, follow the browser; anything that is not Russian
  *     lands on English, because those are the only two languages that exist.
  */
-
-const PERSIST_KEY = 'fm_linguistic_config'
 
 function setLanguages(tags: string[]) {
   Object.defineProperty(window.navigator, 'languages', {
@@ -61,7 +59,7 @@ describe('guest locale bootstrap', () => {
 
   it('never overrides a stored choice', () => {
     window.localStorage.setItem(
-      PERSIST_KEY,
+      LOCALE_PERSIST_KEY,
       JSON.stringify({ state: { module: 'ru' }, version: 0 })
     )
     setLanguages(['en-US'])

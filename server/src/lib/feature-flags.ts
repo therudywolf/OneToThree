@@ -14,11 +14,21 @@
  * See docs/project/ROADMAP_SELFHOST_LITE.md.
  */
 
-const off = (v: string | undefined): boolean =>
+/**
+ * The truthiness vocabulary of every boolean env var in this server. Exported
+ * so `instance-settings.ts` parses `FEATURE_OPEN_REGISTRATION` with the SAME
+ * tokens rather than a second copy of these regexes: two readers of one `.env`
+ * line that disagree about what `off` means is a configuration bug nobody can
+ * see from either side.
+ */
+export const isEnvFalse = (v: string | undefined): boolean =>
   v != null && /^(0|false|no|off)$/i.test(v.trim())
 
-const on = (v: string | undefined): boolean =>
+export const isEnvTrue = (v: string | undefined): boolean =>
   v != null && /^(1|true|yes|on)$/i.test(v.trim())
+
+const off = isEnvFalse
+const on = isEnvTrue
 
 /** A flag is ON unless explicitly set to a falsey value. */
 function flag(name: string): boolean {
@@ -46,12 +56,16 @@ export type FeatureFlags = {
   groups: boolean
   /** One-time guest links (calls + temp chats). Opt-in, default OFF. */
   guests: boolean
-  /**
-   * Open self-registration (the historical behaviour, hence default ON).
-   * OFF = POST /api/auth/verify refuses to create new accounts; existing
-   * users (and approved guests) keep logging in unchanged.
+  /*
+   * `openRegistration` deliberately does NOT live here any more.
+   *
+   * It is the one knob an admin can flip at runtime (it gates a branch inside
+   * POST /auth/verify, not a route group), so it is read per request from
+   * lib/instance-settings.ts — `open_registration`, env fallback
+   * FEATURE_OPEN_REGISTRATION. Leaving a boot-time copy on this typed, discoverable
+   * object is how a future caller silently reads a value the panel has since
+   * changed; removing it makes the compiler forbid that.
    */
-  openRegistration: boolean
 }
 
 export function getFeatureFlags(): FeatureFlags {
@@ -65,7 +79,6 @@ export function getFeatureFlags(): FeatureFlags {
     admin: flag('FEATURE_ADMIN'),
     groups: flag('FEATURE_GROUPS'),
     guests: optInFlag('FEATURE_GUESTS'),
-    openRegistration: flag('FEATURE_OPEN_REGISTRATION'),
   }
 }
 

@@ -148,8 +148,22 @@ async function main() {
     line('')
   }
 
+  // First admin. Until this existed the installer ended with "now open psql and
+  // run an UPDATE", and half the installs simply stayed without an admin panel.
+  //
+  // Ask for the handle so the API can promote it on boot. Blank keeps the old
+  // behaviour (the psql one-liner printed at the end). Register the account
+  // BEFORE naming it here when the instance is public: the promotion matches on
+  // the handle, so on an open-registration server a stranger who registers that
+  // handle first would be the one promoted.
+  const adminUsername = await q(
+    'Handle of the first admin — register it in the app, blank to skip',
+    existing.OT_ADMIN_USERNAME || ''
+  )
+  line('')
+
   // ── Write artifacts ─────────────────────────────────────────────────────────
-  const env = buildEnv({ cfg, flags, s3PublicUrl, livekit, vapid, existing })
+  const env = buildEnv({ cfg, flags, s3PublicUrl, livekit, vapid, existing, adminUsername })
   if (Object.keys(existing).length) {
     line('  (existing install detected — keeping its database and session secrets)')
   }

@@ -359,7 +359,7 @@ async function waitForDecryptedImage(client, minCount = 1, timeoutMs = 60_000) {
 
 // ------------------------------------------------------------- scenarios ---
 
-async function scenarioGroup(A, B, idB) {
+async function scenarioGroup(A, B, _idB) {
   let chatId = null
   try {
     await A.page.goto(`${APP}/`, { waitUntil: 'domcontentloaded' })

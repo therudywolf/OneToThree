@@ -131,8 +131,10 @@ enrolled 2FA secret undecryptable.
   `OT_ADMIN_USERNAME` (→ `ADMIN_BOOTSTRAP_USERNAME` in the API). Register that
   handle in the app, restart the API once, and it becomes the instance owner.
   The promotion only fires while there is no owner yet, so the variable is
-  inert afterwards and safe to leave. It never creates an account. Leave it
-  blank and the installer prints the psql one-liner instead.
+  inert afterwards and safe to leave. It never creates an account — and because
+  it matches on the handle, register that handle BEFORE naming it here if your
+  instance takes open sign-ups. Leave it blank and the installer prints the psql
+  one-liner instead.
 - **Backups.** `npm run lite:backup` writes `backups/lite-<ts>.tar.gz`: the whole
   Postgres cluster, the MinIO data directory (when media is on), and
   `.env.lite`. Restore with
@@ -273,8 +275,10 @@ root-пароль только при первом создании тома, п
   `OT_ADMIN_USERNAME` (→ `ADMIN_BOOTSTRAP_USERNAME` у API). Зарегистрируй
   этот ник в приложении, перезапусти api один раз — и он станет владельцем
   инстанса. Повышение срабатывает, только пока владельца нет, дальше
-  переменная безвредна. Аккаунт она не создаёт. Оставишь пустым —
-  установщик напечатает однострочник для psql, как раньше.
+  переменная безвредна. Аккаунт она не создаёт — и, поскольку ищет по нику,
+  на сервере с открытой регистрацией сначала займи этот ник сам, а потом
+  указывай его здесь. Оставишь пустым — установщик напечатает однострочник для
+  psql, как раньше.
 - **Бэкапы.** `npm run lite:backup` пишет `backups/lite-<ts>.tar.gz`: весь
   кластер Postgres, каталог MinIO (если медиа включено) и `.env.lite`.
   Восстановление —

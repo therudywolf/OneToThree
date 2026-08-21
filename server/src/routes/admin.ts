@@ -42,8 +42,14 @@ import {
   getSettingsSnapshot,
   setSetting,
 } from '../lib/instance-settings.js'
+import {
+  SERVER_BUILT_AT,
+  SERVER_COMMIT_SHA,
+  SERVER_VERSION,
+} from '../lib/build-info.js'
 import { getLogCounters } from '../lib/log-counters.js'
 import { getRedis } from '../lib/redis.js'
+import { groupPatch } from '../lib/user-group.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
 /**
@@ -665,7 +671,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const nextGroup = body.data.role === 'admin' ? 'admin' : 'regular'
     const [after] = await db
       .update(users)
-      .set({ role: body.data.role, userGroup: nextGroup })
+      .set(groupPatch(nextGroup))
       .where(eq(users.id, params.data.id))
       .returning({ id: users.id, username: users.username, role: users.role, group: users.userGroup, is_banned: users.isBanned })
 
@@ -719,10 +725,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'CREATOR_ONLY' })
     }
 
-    const role = newGroup === 'admin' ? 'admin' : 'user'
     const [after] = await db
       .update(users)
-      .set({ userGroup: newGroup, role })
+      .set(groupPatch(newGroup))
       .where(eq(users.id, params.data.id))
       .returning({
         id: users.id,
@@ -949,22 +954,11 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return
     const settings = await getSettingsSnapshot()
-    return reply.send({
-      settings,
-      // Env-only, restart-required. `openRegistration` is deliberately absent:
-      // it lives in `settings` above, where it can actually be changed.
-      feature_flags: {
-        media: request.server.featureFlags.media,
-        calls: request.server.featureFlags.calls,
-        stickers: request.server.featureFlags.stickers,
-        gif: request.server.featureFlags.gif,
-        push: request.server.featureFlags.push,
-        twofa: request.server.featureFlags.twofa,
-        admin: request.server.featureFlags.admin,
-        groups: request.server.featureFlags.groups,
-        guests: request.server.featureFlags.guests,
-      },
-    })
+    // Env-only, restart-required flags, straight off the boot snapshot — not a
+    // hand-copied literal, so the NEXT flag added to FeatureFlags shows up here
+    // without anyone remembering this endpoint. Open registration is absent by
+    // construction: it is in `settings` above, where it can be changed.
+    return reply.send({ settings, feature_flags: request.server.featureFlags })
   })
 
   /**
@@ -1029,67 +1023,81 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return
 
-    let dbOk = true
-    try {
-      await db.execute(sql`SELECT 1`)
-    } catch {
-      dbOk = false
-    }
-
+    const now = new Date()
     const redis = getRedis()
-    let redisOk: boolean | null = null
-    if (redis) {
-      try {
-        // Bounded: a Redis that is unreachable rather than refusing does not
-        // reject the ping, it just never answers — and this is the health card
-        // an operator opens *because* something is wrong. Waiting forever to
-        // report "Redis is down" is the one behaviour this panel must not have.
-        redisOk =
-          (await Promise.race([
-            redis.ping(),
-            new Promise<string>((resolve) =>
-              setTimeout(() => resolve('TIMEOUT'), 1500).unref?.()
-            ),
-          ])) === 'PONG'
-      } catch {
-        redisOk = false
-      }
-    }
+    const guestsEnabled = request.server.featureFlags.guests
 
-    const guestsCounts = { active_guests: 0, live_invites: 0 }
-    if (request.server.featureFlags.guests) {
-      const now = new Date()
-      const [g] = await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(users)
-        .where(eq(users.userGroup, 'guest'))
-      const [inv] = await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(guestInvites)
-        .where(
-          and(
-            isNull(guestInvites.revokedAt),
-            gt(guestInvites.expiresAt, now),
-            sql`${guestInvites.usedCount} < ${guestInvites.maxUses}`
-          )
-        )
-      guestsCounts.active_guests = Number(g?.n ?? 0)
-      guestsCounts.live_invites = Number(inv?.n ?? 0)
-    }
+    // Every probe below is independent, and this is the card an operator opens
+    // BECAUSE something is wrong — so they run together. Serially, a hung Redis
+    // spent its whole 1.5s budget before the counts were even issued, and the
+    // answer to "is Redis down?" arrived after four more round trips.
+    const [dbProbe, redisProbe, guestProbe, inviteProbe, creatorProbe] =
+      await Promise.allSettled([
+        db.execute(sql`SELECT 1`),
+        redis
+          ? // Bounded: a Redis that is unreachable rather than refusing does
+            // not reject the ping, it just never answers. Waiting forever to
+            // report "Redis is down" is the one behaviour this panel must not
+            // have.
+            Promise.race([
+              redis.ping(),
+              new Promise<string>((resolve) =>
+                setTimeout(() => resolve('TIMEOUT'), 1500).unref?.()
+              ),
+            ])
+          : Promise.resolve(null),
+        guestsEnabled
+          ? db
+              .select({ n: sql<number>`count(*)::int` })
+              .from(users)
+              // The SAME predicate the capacity limiter enforces in
+              // routes/guest.ts — group AND not yet expired. Counting
+              // expired-but-unswept rows here would show the operator a number
+              // at the cap while the limiter happily kept admitting guests.
+              .where(
+                and(
+                  eq(users.userGroup, 'guest'),
+                  gt(users.guestExpiresAt, now)
+                )
+              )
+          : Promise.resolve([{ n: 0 }]),
+        guestsEnabled
+          ? db
+              .select({ n: sql<number>`count(*)::int` })
+              .from(guestInvites)
+              .where(
+                and(
+                  isNull(guestInvites.revokedAt),
+                  gt(guestInvites.expiresAt, now),
+                  sql`${guestInvites.usedCount} < ${guestInvites.maxUses}`
+                )
+              )
+          : Promise.resolve([{ n: 0 }]),
+        // A server with no creator cannot grant or revoke admin rights, cannot
+        // change an instance setting, and gives its operator a panel that looks
+        // functional and refuses half of what it offers. Surfacing the count is
+        // what turns that into a fixable message instead of a mystery 403.
+        db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(users)
+          .where(eq(users.userGroup, 'creator')),
+      ])
 
-    // A server with no creator cannot grant or revoke admin rights, cannot
-    // change an instance setting, and gives its operator a panel that looks
-    // functional and refuses half of what it offers. Surfacing the count is
-    // what turns that into a fixable message instead of a mystery 403.
-    const [creators] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(users)
-      .where(eq(users.userGroup, 'creator'))
+    const dbOk = dbProbe.status === 'fulfilled'
+    const redisOk = !redis
+      ? null
+      : redisProbe.status === 'fulfilled' && redisProbe.value === 'PONG'
+
+    // A count that failed reports 0 rather than 500-ing the whole card: when
+    // the database is down the operator needs the rest of this page, and `db`
+    // above already says why the numbers are meaningless.
+    const countOf = (r: PromiseSettledResult<{ n: number }[]>): number =>
+      r.status === 'fulfilled' ? Number(r.value[0]?.n ?? 0) : 0
 
     return reply.send({
-      version: process.env.APP_VERSION?.trim() || null,
-      commit: process.env.GIT_SHA?.trim() || null,
-      built_at: process.env.BUILT_AT?.trim() || null,
+      version: SERVER_VERSION,
+      commit: SERVER_COMMIT_SHA,
+      built_at: SERVER_BUILT_AT,
       node_version: process.version,
       uptime_ms: Math.round(process.uptime() * 1000),
       health: {
@@ -1103,8 +1111,11 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
               process.env.LIVEKIT_API_KEY_FILE?.trim())
         ),
       },
-      guests: guestsCounts,
-      creator_count: Number(creators?.n ?? 0),
+      guests: {
+        active_guests: countOf(guestProbe),
+        live_invites: countOf(inviteProbe),
+      },
+      creator_count: countOf(creatorProbe),
       // Warnings and errors this API process has logged since it started.
       // The guest sweeper once failed on every tick for five days and the only
       // trace was a log line nobody read; a number on the dashboard is what

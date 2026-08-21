@@ -35,6 +35,11 @@ import { readFmSessionToken } from './lib/session-cookie.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { getFeatureFlags, type FeatureFlags } from './lib/feature-flags.js'
+import {
+  SERVER_BUILT_AT,
+  SERVER_COMMIT_SHA,
+  SERVER_VERSION,
+} from './lib/build-info.js'
 import { getBooleanSetting } from './lib/instance-settings.js'
 import { logCounterHooks } from './lib/log-counters.js'
 import { authorizeMetrics, metricsToken, renderMetrics } from './lib/metrics.js'
@@ -43,34 +48,6 @@ import { getRedis } from './lib/redis.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
 import { webviewCorsOrigins } from './lib/webview-origins.js'
 import { db } from './db/index.js'
-import { readFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-// Resolve the repo VERSION file relative to this module so the value
-// is stable regardless of the cwd at runtime. Falls back to "dev" when
-// the file isn't bundled (e.g. ts-node from a stripped image).
-function readServerVersion(): string {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url))
-    // built layout: dist/app.js → ../../VERSION (server/dist → server → repo)
-    for (const candidate of [
-      join(here, '..', '..', 'VERSION'),
-      join(here, '..', 'VERSION'),
-      join(process.cwd(), 'VERSION'),
-    ]) {
-      try {
-        const v = readFileSync(candidate, 'utf8').trim()
-        if (v) return v
-      } catch {
-        /* keep trying */
-      }
-    }
-  } catch {
-    /* fall through */
-  }
-  return 'dev'
-}
 
 /**
  * D12: cache the verified session JWT for the lifetime of a single request.
@@ -92,10 +69,6 @@ declare module 'fastify' {
     featureFlags: FeatureFlags
   }
 }
-
-const SERVER_VERSION = process.env.APP_VERSION?.trim() || readServerVersion()
-const SERVER_COMMIT_SHA = (process.env.GIT_SHA ?? process.env.COMMIT_SHA ?? '').trim() || null
-const SERVER_BUILT_AT = process.env.BUILT_AT?.trim() || null
 
 function normalizeHttpOrigin(raw: string | undefined): string | null {
   const value = raw?.trim()
@@ -583,10 +556,11 @@ export async function buildApp() {
   // Exposed at root (infra/healthcheck convention, next to /version) AND under
   // /api so the same-origin web client — whose base is `<origin>/api` — can reach
   // it without a dedicated host.
-  // `openRegistration` is the one flag an admin can flip at runtime (it gates a
-  // branch, not a route group), so it is read from the instance settings rather
-  // than the boot snapshot — otherwise closing sign-ups in the panel left every
-  // client still showing the "create account" tab until the next restart.
+  // `openRegistration` is the one knob an admin can flip at runtime (it gates a
+  // branch, not a route group), so it is read from the instance settings and
+  // never from the boot snapshot — which no longer carries it at all. Otherwise
+  // closing sign-ups in the panel left every client still showing the "create
+  // account" tab until the next restart.
   const capabilitiesHandler = async () => ({
     features: {
       ...flags,

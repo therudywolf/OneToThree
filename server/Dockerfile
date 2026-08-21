@@ -63,7 +63,17 @@ ENV APP_VERSION=${APP_VERSION}
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILT_AT=${BUILT_AT}
 
-RUN chown -R app:app /app
+# Media root for MEDIA_DRIVER=fs, created HERE rather than at runtime.
+#
+# Docker seeds a fresh named volume from whatever the image has at the mount
+# point -- contents and ownership. Mounting a volume onto a path the image does
+# not have gives you an empty, root-owned directory, and this process runs as
+# uid 1001: every upload then fails with EACCES on the first mkdir, having
+# looked perfectly healthy up to that moment. That is the same shape as the
+# unreadable-secret bug that once cost this deployment its LiveKit keys, and it
+# is worth two lines in a Dockerfile to make impossible.
+RUN mkdir -p /data/media
+RUN chown -R app:app /app /data
 USER app
 ENV NODE_ENV=production
 EXPOSE 8080

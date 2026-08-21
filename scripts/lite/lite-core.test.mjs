@@ -23,6 +23,9 @@ import {
   writeArtifacts,
   readExistingEnv,
   composeArgs,
+  renderLivekitConfig,
+  resolveLivekit,
+  resolveMediaDriver,
   generateVapidKeys,
   resolveVapid,
   s3UrlProblem,
@@ -496,6 +499,154 @@ describe('calls', () => {
     assert.equal(env.OT_CALL_MEDIA_MODE, 'origin_safe')
     assert.equal(env.OT_LIVEKIT_URL, '')
   })
+
+  /**
+   * Bundling has to be asked for. An empty `livekit` is what every caller
+   * written before the bundled SFU existed passes, and reading it as "yes,
+   * start an SFU" would launch a container and open a UDP port on an install
+   * that never mentioned either.
+   */
+  test('the bundled SFU is opt-in, never inferred', () => {
+    const cfg = computeModeConfig('local', {})
+    const flags = flagsFor({ CALLS: '1' })
+    assert.equal(resolveLivekit({ cfg, flags, livekit: {} }).bundled, false)
+    assert.equal(resolveLivekit({ cfg, flags, livekit: { bundled: true } }).bundled, true)
+    // Calls off wins over everything.
+    assert.equal(
+      resolveLivekit({ cfg, flags: flagsFor({ CALLS: '0' }), livekit: { bundled: true } }).bundled,
+      false
+    )
+  })
+
+  test('the bundled SFU shares the app origin and matches its scheme', () => {
+    const local = resolveLivekit({
+      cfg: computeModeConfig('local', { httpPort: '8099' }),
+      flags: flagsFor({ CALLS: '1' }),
+      livekit: { bundled: true },
+    })
+    // ws:// on plain HTTP; wss:// would be a mixed-content block with nothing
+    // in any server log to explain it.
+    assert.equal(local.url, 'ws://localhost:8099/livekit')
+
+    const domain = resolveLivekit({
+      cfg: computeModeConfig('domain', { domain: 'chat.example.com' }),
+      flags: flagsFor({ CALLS: '1' }),
+      livekit: { bundled: true },
+    })
+    assert.equal(domain.url, 'wss://chat.example.com/livekit')
+  })
+
+  /**
+   * The key ends up in TWO files: .env.lite (the API signs tokens with it) and
+   * livekit.yaml (the SFU verifies them with it). Resolving twice would put a
+   * different secret in each, and every token the API issued would be rejected.
+   */
+  test('resolving an already-resolved LiveKit keeps its keys', () => {
+    const cfg = computeModeConfig('local', {})
+    const flags = flagsFor({ CALLS: '1' })
+    const first = resolveLivekit({ cfg, flags, livekit: { bundled: true } })
+    const again = resolveLivekit({ cfg, flags, livekit: first })
+    assert.equal(again.key, first.key)
+    assert.equal(again.secret, first.secret)
+
+    const env = buildEnv({ cfg, flags, livekit: first })
+    assert.equal(env.OT_LIVEKIT_API_SECRET, first.secret)
+    assert.equal(env.OT_LIVEKIT_URL, first.url)
+    assert.equal(env.OT_CALL_MEDIA_MODE, 'self_hosted')
+    // The admin API is reached over the container network, not through Caddy.
+    assert.equal(env.OT_LIVEKIT_ADMIN_URL, 'http://livekit:7880')
+  })
+
+  test('re-running keeps the keys the running SFU has open', () => {
+    const cfg = computeModeConfig('local', {})
+    const flags = flagsFor({ CALLS: '1' })
+    const existing = { OT_LIVEKIT_API_KEY: 'APIkeep', OT_LIVEKIT_API_SECRET: 'secretkeep' }
+    const lk = resolveLivekit({ cfg, flags, livekit: { bundled: true }, existing })
+    assert.equal(lk.key, 'APIkeep')
+    assert.equal(lk.secret, 'secretkeep')
+  })
+
+  test('an external LiveKit still wins, and starts no container', () => {
+    const lk = resolveLivekit({
+      cfg: computeModeConfig('domain', { domain: 'chat.example.com' }),
+      flags: flagsFor({ CALLS: '1' }),
+      livekit: { url: 'wss://lk.example.com', key: 'k', secret: 's', bundled: true },
+    })
+    assert.equal(lk.bundled, false)
+    assert.equal(lk.url, 'wss://lk.example.com')
+  })
+
+  test('the media port is loopback locally and open elsewhere', () => {
+    const local = buildEnv({
+      cfg: computeModeConfig('local', {}),
+      flags: flagsFor({ CALLS: '1' }),
+      livekit: { bundled: true },
+    })
+    assert.equal(local.OT_LIVEKIT_BIND, '127.0.0.1:')
+    const domain = buildEnv({
+      cfg: computeModeConfig('domain', { domain: 'chat.example.com' }),
+      flags: flagsFor({ CALLS: '1' }),
+      livekit: { bundled: true },
+    })
+    assert.equal(domain.OT_LIVEKIT_BIND, '')
+    assert.equal(domain.OT_LIVEKIT_UDP_PORT, '7882')
+  })
+
+  test('the SFU is told an address the browser can actually send media to', () => {
+    const local = renderLivekitConfig({
+      cfg: computeModeConfig('local', {}),
+      apiKey: 'APIx',
+      apiSecret: 'secret',
+    })
+    // A container on a bridge network advertises 172.x, which no browser can
+    // reach. Pinning node_ip is the whole reason local calls connect at all.
+    assert.match(local, /node_ip: 127\.0\.0\.1/)
+    assert.match(local, /use_external_ip: false/)
+
+    const lan = renderLivekitConfig({
+      cfg: computeModeConfig('lan', { host: '192.168.1.50', httpsPort: '8443' }),
+      apiKey: 'APIx',
+      apiSecret: 'secret',
+    })
+    assert.match(lan, /node_ip: 192\.168\.1\.50/)
+
+    const domain = renderLivekitConfig({
+      cfg: computeModeConfig('domain', { domain: 'chat.example.com' }),
+      apiKey: 'APIx',
+      apiSecret: 'secret',
+    })
+    assert.match(domain, /use_external_ip: true/)
+    assert.doesNotMatch(domain, /node_ip:/)
+  })
+
+  test('the SFU config carries the keys and the webhook, and no TURN', () => {
+    const cfgText = renderLivekitConfig({
+      cfg: computeModeConfig('local', {}),
+      apiKey: 'APIabc',
+      apiSecret: 'shhh',
+    })
+    assert.match(cfgText, /^ {2}APIabc: shhh$/m)
+    // room_finished is how the per-call E2EE key gets dropped when a call ends.
+    assert.match(cfgText, /http:\/\/api:8080\/api\/call\/livekit\/webhook/)
+    assert.match(cfgText, /turn:\n {2}enabled: false/)
+  })
+
+  test('the bundled SFU adds a proxy route, and nothing else does', () => {
+    const cfg = computeModeConfig('local', {})
+    assert.doesNotMatch(renderCaddyfile(cfg), /livekit/)
+    const withLk = renderCaddyfile(cfg, { livekitBundled: true })
+    assert.match(withLk, /handle \/livekit\/\*/)
+    assert.match(withLk, /uri strip_prefix \/livekit/)
+    assert.match(withLk, /reverse_proxy livekit:7880/)
+  })
+
+  test('only a bundled SFU pulls in the calls profile', () => {
+    const flags = flagsFor({ CALLS: '1' })
+    assert.ok(
+      composeArgs(flags, [], { mediaDriver: 'fs', livekitBundled: true }).includes('calls')
+    )
+    assert.ok(!composeArgs(flags, [], { mediaDriver: 'fs' }).includes('calls'))
+  })
 })
 
 describe('features', () => {
@@ -529,9 +680,93 @@ describe('features', () => {
   })
 
   test('media or stickers pull in the MinIO profile; neither leaves it out', () => {
-    assert.ok(composeArgs(flagsFor({ MEDIA: '1', STICKERS: '0' })).includes('media'))
-    assert.ok(composeArgs(flagsFor({ MEDIA: '0', STICKERS: '1' })).includes('media'))
-    assert.ok(!composeArgs(flagsFor({ MEDIA: '0', STICKERS: '0' })).includes('media'))
+    const s3 = { mediaDriver: 's3' }
+    assert.ok(composeArgs(flagsFor({ MEDIA: '1', STICKERS: '0' }), [], s3).includes('media'))
+    assert.ok(composeArgs(flagsFor({ MEDIA: '0', STICKERS: '1' }), [], s3).includes('media'))
+    assert.ok(!composeArgs(flagsFor({ MEDIA: '0', STICKERS: '0' }), [], s3).includes('media'))
+  })
+
+  /**
+   * The whole point of the local driver is that the second container is GONE —
+   * not stopped, not present-but-idle. Leaving the profile on would start MinIO
+   * next to an API that never talks to it, and the operator would find a
+   * container they cannot explain.
+   */
+  test('the local media driver starts no object store at all', () => {
+    const args = composeArgs(flagsFor({ MEDIA: '1', STICKERS: '1' }), ['up', '-d'], {
+      mediaDriver: 'fs',
+    })
+    assert.ok(!args.includes('media'), args.join(' '))
+    assert.ok(!args.includes('--profile'), args.join(' '))
+  })
+
+  /**
+   * A `.env.lite` written before the local driver existed says nothing about a
+   * driver — and its photos are in MinIO. Reading that silence as "fs" would
+   * bring the stack up pointed at an empty directory: every picture gone from
+   * the app, none gone from the disk, nothing in any log.
+   */
+  test('an install from before the driver existed keeps its object store', () => {
+    assert.equal(resolveMediaDriver({ existing: {} }), 'fs')
+    assert.equal(resolveMediaDriver({ existing: { OT_JWT_SECRET: 'x' } }), 's3')
+    assert.equal(
+      resolveMediaDriver({ existing: { OT_JWT_SECRET: 'x', OT_MEDIA_DRIVER: 'fs' } }),
+      'fs'
+    )
+    // An explicit choice always wins — that is the operator switching on purpose.
+    assert.equal(
+      resolveMediaDriver({ mediaDriver: 'fs', existing: { OT_JWT_SECRET: 'x' } }),
+      'fs'
+    )
+    assert.equal(resolveMediaDriver({ mediaDriver: 's3', existing: {} }), 's3')
+    // Junk in the file is not a third driver.
+    assert.equal(resolveMediaDriver({ existing: { OT_MEDIA_DRIVER: 'nonsense' } }), 's3')
+  })
+
+  test('the local driver writes an ABSOLUTE media base and no object-store URL', () => {
+    const env = buildEnv({
+      cfg: computeModeConfig('domain', { domain: 'chat.example.com' }),
+      flags: flagsFor(),
+      s3PublicUrl: 'https://s3.example.com',
+      mediaDriver: 'fs',
+    })
+    assert.equal(env.OT_MEDIA_DRIVER, 'fs')
+    // Absolute, because the APK and the desktop shell load the page from their
+    // own WebView origin and would resolve a relative one against that.
+    assert.equal(env.OT_MEDIA_PUBLIC_URL, 'https://chat.example.com/api')
+    // The S3 URL the operator typed must not survive into an fs install: it is
+    // config they would believe is applied, pointing at a container that is not
+    // running.
+    assert.equal(env.OT_S3_PUBLIC_URL, '')
+    assert.equal(env.OT_MINIO_BIND, '127.0.0.1:')
+  })
+
+  test('the s3 driver still writes what MinIO needs', () => {
+    const env = buildEnv({
+      cfg: computeModeConfig('domain', { domain: 'chat.example.com' }),
+      flags: flagsFor(),
+      s3PublicUrl: 'https://s3.example.com',
+      mediaDriver: 's3',
+    })
+    assert.equal(env.OT_MEDIA_DRIVER, 's3')
+    assert.equal(env.OT_MEDIA_PUBLIC_URL, '')
+    assert.equal(env.OT_S3_PUBLIC_URL, 'https://s3.example.com')
+  })
+
+  test('a new install defaults to the local driver', () => {
+    const env = buildEnv({ cfg: computeModeConfig('local', {}), flags: flagsFor() })
+    assert.equal(env.OT_MEDIA_DRIVER, 'fs')
+    assert.equal(env.OT_MEDIA_PUBLIC_URL, `${computeModeConfig('local', {}).origin}/api`)
+  })
+
+  test('the object-store URL warning does not fire when there is no object store', () => {
+    const cfg = computeModeConfig('domain', { domain: 'chat.example.com' })
+    const flags = flagsFor()
+    assert.ok(s3UrlProblem({ cfg, flags, s3PublicUrl: 'http://localhost:9000' }))
+    assert.equal(
+      s3UrlProblem({ cfg, flags, s3PublicUrl: 'http://localhost:9000', mediaDriver: 'fs' }),
+      null
+    )
   })
 
   test('compose always targets the Lite file and its env', () => {

@@ -16,6 +16,8 @@ import { pushRoutes } from './routes/push.js'
 import { userRoutes } from './routes/users.js'
 import { webrtcRoutes } from './routes/webrtc.js'
 import { storageRoutes } from './routes/storage.js'
+import { mediaBlobRoutes } from './routes/media-blob.js'
+import { mediaDriver, mediaPublicBase } from './lib/media-driver.js'
 import { adminRoutes } from './routes/admin.js'
 import { vaultRoutes } from './routes/vault.js'
 import { wsRoutes, MAX_WS_MESSAGE_BYTES } from './routes/ws.js'
@@ -236,7 +238,15 @@ export async function buildApp() {
         }
       : true
   const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
-  const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)
+  // Where media bytes actually come from. On the fs driver that is this API's
+  // own public base (MEDIA_PUBLIC_URL); on S3 it is the object store. Getting
+  // this wrong does not fail loudly -- it fails as pictures that never appear,
+  // with only a CSP line in the browser console to say why.
+  const storageOrigin = normalizeHttpOrigin(
+    mediaDriver() === 'fs'
+      ? mediaPublicBase() || process.env.NEXT_PUBLIC_API_URL
+      : process.env.MINIO_PUBLIC_URL
+  )
   const gifMediaOrigins = ['https://*.giphy.com', 'https://media.tenor.com', 'https://*.tenor.com']
   const gifApiOrigins = ['https://api.giphy.com', 'https://api.tenor.com', 'https://tenor.googleapis.com']
   const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net/npm/'])
@@ -500,6 +510,11 @@ export async function buildApp() {
   // storageRoutes is SHARED (chat media + always-on avatars); the media-only
   // endpoints self-gate on flags.media via a preHandler, /avatar-url stays open.
   await app.register(storageRoutes, { prefix: '/api/storage' })
+  // Byte transport for MEDIA_DRIVER=fs. On the S3 driver these routes are never
+  // registered, so the endpoints simply do not exist.
+  if (mediaDriver() === 'fs') {
+    await app.register(mediaBlobRoutes, { prefix: '/api/media' })
+  }
   await app.register(vaultRoutes, { prefix: '/api/vault' })
   await app.register(linkPreviewRoutes, { prefix: '/api' })
   await app.register(wsRoutes, { prefix: '/api' })

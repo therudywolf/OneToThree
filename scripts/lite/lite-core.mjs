@@ -242,7 +242,18 @@ export function readExistingEnv(repo) {
  * Pass `existing` (from {@link readExistingEnv}) to keep the credentials the
  * running volumes were created with — see PERSISTENT_SECRETS.
  */
-export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = null, existing = {}, adminUsername = '' }) {
+export function buildEnv({
+  cfg,
+  flags,
+  s3PublicUrl = '',
+  livekit = {},
+  vapid = null,
+  existing = {},
+  adminUsername = '',
+  mediaDriver = '',
+}) {
+  const driver = resolveMediaDriver({ mediaDriver, existing })
+  const lk = resolveLivekit({ cfg, flags, livekit, existing })
   const env = {
     OT_MODE: cfg.mode,
     OT_ORIGIN: cfg.origin,
@@ -260,11 +271,24 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     OT_DB_PASSWORD: hex(16),
     OT_JWT_SECRET: hex(32),
     OT_TOTP_WRAP_KEY: hex(32),
+    // Where media bytes live. `fs` is the default for a new install: no second
+    // container, no object-store URL to get wrong, and media that backs up as a
+    // directory. `s3` keeps the bundled MinIO for anyone who wants it (or who
+    // already has one full of photos -- see resolveMediaDriver).
+    OT_MEDIA_DRIVER: driver,
+    // Only meaningful on the fs driver, and it must be ABSOLUTE: the web client
+    // is same-origin and would cope with a relative URL, but the Android and
+    // desktop shells load the page from their own WebView origin and would
+    // resolve it against that.
+    OT_MEDIA_PUBLIC_URL: driver === 'fs' ? `${cfg.origin}/api` : '',
     OT_MINIO_USER: 'minio',
     OT_MINIO_PASSWORD: hex(20),
     OT_MINIO_PORT: '9000',
-    OT_MINIO_BIND: minioBind({ cfg, s3PublicUrl: s3PublicUrl || cfg.s3PublicDefault, minioPort: '9000' }),
-    OT_S3_PUBLIC_URL: s3PublicUrl || cfg.s3PublicDefault,
+    OT_MINIO_BIND:
+      driver === 's3'
+        ? minioBind({ cfg, s3PublicUrl: s3PublicUrl || cfg.s3PublicDefault, minioPort: '9000' })
+        : '127.0.0.1:',
+    OT_S3_PUBLIC_URL: driver === 's3' ? s3PublicUrl || cfg.s3PublicDefault : '',
     OT_ENABLE_MEDIA: flags.MEDIA,
     OT_ENABLE_CALLS: flags.CALLS,
     OT_ENABLE_STICKERS: flags.STICKERS,
@@ -285,10 +309,20 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     // /call/config reports `livekit_enabled: false` regardless of the three
     // vars below — and the client takes the WebSocket audio relay without ever
     // asking for an SFU token. A configured LiveKit was simply ignored.
-    OT_CALL_MEDIA_MODE: livekit.url ? 'self_hosted' : 'origin_safe',
-    OT_LIVEKIT_URL: livekit.url || '',
-    OT_LIVEKIT_API_KEY: livekit.key || '',
-    OT_LIVEKIT_API_SECRET: livekit.secret || '',
+    OT_CALL_MEDIA_MODE: lk.url ? 'self_hosted' : 'origin_safe',
+    OT_LIVEKIT_URL: lk.url,
+    OT_LIVEKIT_API_KEY: lk.key,
+    OT_LIVEKIT_API_SECRET: lk.secret,
+    // Server-side address of the SFU's admin API. Differs from the browser URL
+    // for the bundled SFU: the browser goes through Caddy on the public origin,
+    // this process goes over the container network. Resolving the browser URL
+    // from inside the api container would hit the api container's own loopback.
+    OT_LIVEKIT_ADMIN_URL: lk.bundled ? 'http://livekit:7880' : '',
+    // Published so browsers can send media to the SFU. Signalling rides Caddy on
+    // the normal origin; only this one UDP port has to be reachable, and on a
+    // public server it also has to be open in the firewall.
+    OT_LIVEKIT_UDP_PORT: lk.bundled ? '7882' : '',
+    OT_LIVEKIT_BIND: lk.bundled && cfg.mode !== 'local' ? '' : '127.0.0.1:',
   }
   if (flags.PUSH === '1') {
     const v = vapid || generateVapidKeys()
@@ -324,6 +358,81 @@ export function renderEnvFile(env) {
 }
 
 /**
+ * Which media backend this install should use.
+ *
+ * `fs` for anything new. The interesting case is the RE-RUN: the guide tells
+ * operators to re-run the installer to change mode or features, and an install
+ * created before the local driver existed has its photos in MinIO. Quietly
+ * switching it to `fs` would leave a working stack pointed at an empty
+ * directory -- every existing picture gone from the app, none of them gone from
+ * the disk, and nothing in any log. So an existing `.env.lite` that never
+ * mentioned a driver keeps S3 unless the operator asks otherwise.
+ *
+ * @param mediaDriver explicit choice (`fs` / `s3`), or '' to decide from state
+ * @param existing    the previous `.env.lite`, from {@link readExistingEnv}
+ */
+export function resolveMediaDriver({ mediaDriver = '', existing = {} } = {}) {
+  const explicit = String(mediaDriver || '').trim().toLowerCase()
+  if (explicit === 'fs' || explicit === 's3') return explicit
+  const previous = String(existing.OT_MEDIA_DRIVER || '').trim().toLowerCase()
+  if (previous === 'fs' || previous === 's3') return previous
+  return Object.keys(existing).length ? 's3' : 'fs'
+}
+
+/**
+ * Settle the three LiveKit questions at once: bundled or external, what URL the
+ * browser should use, and which keys.
+ *
+ * Calls were the last thing Lite could not do on its own, and the reason was
+ * never the SFU itself — it was that an SFU needs a second hostname, a second
+ * certificate and an open UDP range, which is three more things to get wrong.
+ * Bundling it removes two of them: signalling shares the existing origin
+ * through the reverse proxy, so the only new requirement is one UDP port.
+ *
+ * Bundling is opt-IN (`livekit.bundled === true`). An empty `livekit` still
+ * means what it always meant here -- no SFU, group calls fall back to the
+ * encrypted WebSocket relay -- so no existing caller starts a container it did
+ * not ask for. Both installers ask the question outright.
+ */
+export function resolveLivekit({ cfg, flags = {}, livekit = {}, existing = {} } = {}) {
+  const off = { bundled: false, url: '', key: '', secret: '' }
+  if (flags.CALLS !== '1') return off
+
+  // ws:// on plain-HTTP local mode, wss:// once Caddy is doing TLS. Getting
+  // this wrong is a mixed-content block with nothing in the server log.
+  const scheme = cfg.origin.startsWith('https://') ? 'wss://' : 'ws://'
+  const bundledUrl = `${scheme}${cfg.origin.replace(/^https?:\/\//, '')}/livekit`
+
+  const suppliedUrl = String(livekit.url || '').trim()
+  // A supplied URL that is NOT the one this function mints is the operator's
+  // own SFU. A supplied URL that IS ours means this value has already been
+  // through here (the installer resolves once, then hands the result to
+  // buildEnv) -- re-deriving would mint a SECOND random secret for the same
+  // install: one in .env.lite, a different one in livekit.yaml, and an SFU that
+  // rejects every token the API signs.
+  if (suppliedUrl && suppliedUrl !== bundledUrl) {
+    return {
+      bundled: false,
+      url: assertSingleLine('LiveKit URL', suppliedUrl),
+      key: assertSingleLine('LiveKit API key', String(livekit.key || '').trim()),
+      secret: assertSingleLine('LiveKit API secret', String(livekit.secret || '').trim()),
+    }
+  }
+  if (livekit.bundled !== true) return off
+
+  // Keys, in order of who has the strongest claim: an already-resolved value,
+  // then whatever the running SFU has open (rotating that invalidates every
+  // token in flight AND stops matching the livekit.yaml the container loaded),
+  // then a fresh pair.
+  return {
+    bundled: true,
+    url: bundledUrl,
+    key: livekit.key || existing.OT_LIVEKIT_API_KEY || `APIlite${hex(6)}`,
+    secret: livekit.secret || existing.OT_LIVEKIT_API_SECRET || hex(32),
+  }
+}
+
+/**
  * Media objects are fetched by the BROWSER, not by the server, so the object
  * store URL has to be reachable from wherever the user is sitting.
  *
@@ -338,7 +447,10 @@ export function renderEnvFile(env) {
  *
  * @returns a human-readable problem, or `null` when the value is usable.
  */
-export function s3UrlProblem({ cfg, flags = {}, s3PublicUrl = '' }) {
+export function s3UrlProblem({ cfg, flags = {}, s3PublicUrl = '', mediaDriver = 's3' }) {
+  // The fs driver has no object store to reach: media is served by the API from
+  // the origin the browser is already on.
+  if (mediaDriver === 'fs') return null
   const wantsObjects = flags.MEDIA === '1' || flags.STICKERS === '1'
   const value = String(s3PublicUrl || '').trim()
   if (!wantsObjects || !value || cfg.mode === 'local') return null
@@ -386,8 +498,67 @@ export function minioBind({ cfg, s3PublicUrl = '', minioPort = '9000' }) {
   return pointsHere ? '' : LOOPBACK
 }
 
-/** Per-mode Caddyfile. Caddy requires each block's `{` to end its line. */
-export function renderCaddyfile(cfg) {
+/**
+ * Config for the bundled LiveKit SFU.
+ *
+ * The whole reason calls were never bundled is that an SFU needs media to reach
+ * it over UDP, and a container on a bridge network advertises an address the
+ * browser cannot use. Two settings decide whether calls work at all:
+ *
+ *  - **`use_external_ip`** makes LiveKit discover its own public address over
+ *    STUN. Correct on a public server, wrong on localhost (there is no public
+ *    address, and the discovery just delays startup).
+ *  - **`node_ip`** pins the address to advertise instead. That is what makes a
+ *    local or LAN install work: the browser is told to send media to
+ *    `127.0.0.1:7882` or `192.168.x.y:7882`, which is exactly where the
+ *    published port is.
+ *
+ * A single UDP port (`udp_port`, i.e. mux) rather than a range: one published
+ * port, one firewall rule to explain. TURN stays off — the embedded TURN server
+ * needs its own certificate to be useful, and a call that cannot get through
+ * still falls back to the encrypted WebSocket relay.
+ */
+export function renderLivekitConfig({ cfg, apiKey, apiSecret }) {
+  const isIpv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(String(cfg.host || ''))
+  const lines = [
+    '# Generated by the OneToThree Lite installer. Re-run it to change this file.',
+    'port: 7880',
+    'log_level: info',
+    'rtc:',
+    '  tcp_port: 7881',
+    '  udp_port: 7882',
+  ]
+  if (cfg.mode === 'domain') {
+    lines.push('  use_external_ip: true')
+  } else {
+    lines.push('  use_external_ip: false')
+    lines.push(`  node_ip: ${cfg.mode === 'lan' && isIpv4 ? cfg.host : '127.0.0.1'}`)
+  }
+  lines.push(
+    'turn:',
+    '  enabled: false',
+    'keys:',
+    `  ${apiKey}: ${apiSecret}`,
+    // The webhook is how a room that empties tells the API to drop the per-call
+    // E2EE key. Over the container network, so no TLS and nothing published.
+    'webhook:',
+    `  api_key: ${apiKey}`,
+    '  urls:',
+    '    - http://api:8080/api/call/livekit/webhook',
+    ''
+  )
+  return lines.join('\n')
+}
+
+/**
+ * Per-mode Caddyfile. Caddy requires each block's `{` to end its line.
+ *
+ * `livekitBundled` adds the one route that lets the SFU share this origin:
+ * signalling is plain WebSocket, so proxying it means no second hostname, no
+ * second certificate, and no second port to open for the browser. Only the
+ * media itself needs its own UDP port.
+ */
+export function renderCaddyfile(cfg, { livekitBundled = false } = {}) {
   const routes = [
     '\t# Root-level health passthrough (installer + Docker healthcheck).',
     '\thandle /health {',
@@ -397,6 +568,15 @@ export function renderCaddyfile(cfg) {
     '\thandle /api/* {',
     '\t\treverse_proxy api:8080',
     '\t}',
+    ...(livekitBundled
+      ? [
+          '\t# Bundled LiveKit SFU: signalling only. Media goes straight to UDP 7882.',
+          '\thandle /livekit/* {',
+          '\t\turi strip_prefix /livekit',
+          '\t\treverse_proxy livekit:7880',
+          '\t}',
+        ]
+      : []),
     '\t# Everything else → the Next server.',
     '\thandle {',
     '\t\treverse_proxy web:3000',
@@ -409,10 +589,22 @@ export function renderCaddyfile(cfg) {
   return `{\n\temail ${cfg.acmeEmail}\n}\n\n${cfg.domain} {\n${routes}\n}\n`
 }
 
-/** `docker compose …` args. Only the `media` profile (MinIO) is bundled. */
-export function composeArgs(flags, extra = []) {
+/**
+ * `docker compose …` args. The one bundled optional service is MinIO, behind
+ * the `media` profile — and it is only wanted on the `s3` driver. Omitting the
+ * profile on the fs driver is what actually removes the container: with it the
+ * stack would still start MinIO, and a stopped-but-present container is exactly
+ * the kind of thing an operator later finds and wonders about.
+ *
+ * `opts.mediaDriver` comes from the env being written (installer) or from the
+ * `.env.lite` on disk (backup). Absent, it means an install from before the
+ * driver existed, which had MinIO.
+ */
+export function composeArgs(flags, extra = [], opts = {}) {
+  const driver = String(opts.mediaDriver || 's3').trim().toLowerCase()
   const profiles = []
-  if (flags.MEDIA === '1' || flags.STICKERS === '1') profiles.push('media')
+  if (driver === 's3' && (flags.MEDIA === '1' || flags.STICKERS === '1')) profiles.push('media')
+  if (opts.livekitBundled) profiles.push('calls')
   return [
     'compose',
     '--env-file',
@@ -433,7 +625,7 @@ export function composeArgs(flags, extra = []) {
  * re-run the mode of an existing file is not revisited, hence the explicit
  * chmod. Windows has no POSIX mode; the ACL it inherits is the user's own.
  */
-export function writeArtifacts(repo, env, caddyfile) {
+export function writeArtifacts(repo, env, caddyfile, livekitConfig = '') {
   const envPath = join(repo, '.env.lite')
   writeFileSync(envPath, renderEnvFile(env), { mode: 0o600 })
   try {
@@ -443,6 +635,17 @@ export function writeArtifacts(repo, env, caddyfile) {
   }
   mkdirSync(join(repo, 'infra', 'lite'), { recursive: true })
   writeFileSync(join(repo, 'infra', 'lite', 'Caddyfile'), caddyfile)
+  if (livekitConfig) {
+    // It carries the SFU's API secret, so it gets the same 0600 as .env.lite.
+    // A world-readable key here mints tokens for any room on this server.
+    const lkPath = join(repo, 'infra', 'lite', 'livekit.yaml')
+    writeFileSync(lkPath, livekitConfig, { mode: 0o600 })
+    try {
+      chmodSync(lkPath, 0o600)
+    } catch {
+      /* best-effort */
+    }
+  }
 }
 
 /** Best-guess LAN IPv4 (first non-internal), for the `lan` host default. */
@@ -458,17 +661,58 @@ export function suggestLanIp() {
 /** Preflight: is Docker + Compose v2 present? (Node is implied — we're running.) */
 export function preflight() {
   const check = (cmd, args) => {
+    // Direct spawn first, shell only as a fallback. `shell: true` on Windows
+    // makes Node emit a DEP0190 warning on stderr, which lands in the middle of
+    // a prompt and reads like something went wrong -- during the ONE step whose
+    // whole job is to reassure. Anything with a real .exe (docker, node) never
+    // needs the shell; a .cmd shim still gets it on the retry.
+    const attempt = (useShell) =>
+      spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true, shell: useShell })
     try {
-      const r = spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' })
+      let r = attempt(false)
+      if (r.error && r.error.code === 'ENOENT' && process.platform === 'win32') {
+        r = attempt(true)
+      }
+      if (r.error) return { ok: false, detail: r.error.message || 'not found' }
       const out = (r.stdout || r.stderr || '').trim().split('\n')[0] || ''
       return { ok: r.status === 0, detail: out }
     } catch (e) {
       return { ok: false, detail: e?.message || 'not found' }
     }
   }
+  const docker = check('docker', ['--version'])
+  // `docker --version` answers from the CLI binary alone and says nothing about
+  // whether anything is listening. Docker Desktop not being started is the
+  // single most common reason an install fails, and its symptom used to be a
+  // wall of compose output at the very END of the wizard -- after every question
+  // had been answered. Ask now.
+  const daemon = docker.ok
+    ? check('docker', ['info', '--format', '{{.ServerVersion}}'])
+    : { ok: false, detail: 'docker is not installed' }
+  const major = Number(process.versions.node.split('.')[0])
   return {
-    docker: check('docker', ['--version']),
+    docker,
+    daemon: {
+      ok: daemon.ok,
+      detail: daemon.ok
+        ? `engine ${daemon.detail}`
+        : 'the Docker daemon is not responding — start Docker Desktop (or `sudo systemctl start docker`)',
+    },
     compose: check('docker', ['compose', 'version']),
-    node: { ok: true, detail: process.version },
+    node: {
+      ok: major >= 18,
+      detail: major >= 18 ? process.version : `${process.version} — Node 18 or newer is required`,
+    },
   }
+}
+
+/** Everything preflight checks, in the order a human should read it. */
+export const PREFLIGHT_KEYS = ['docker', 'daemon', 'compose', 'node']
+
+/** Where to get each missing prerequisite, per platform. */
+export function installHint(key, platform = process.platform) {
+  if (key === 'node') return 'https://nodejs.org/ (LTS)'
+  if (platform === 'darwin') return 'https://docs.docker.com/desktop/install/mac-install/'
+  if (platform === 'win32') return 'https://docs.docker.com/desktop/install/windows-install/'
+  return 'https://docs.docker.com/engine/install/'
 }

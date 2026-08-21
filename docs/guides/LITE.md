@@ -22,8 +22,18 @@ npm run lite:gui      # graphical wizard with real checkboxes (opens in your bro
 Prefer a terminal? The text installer asks the same questions:
 
 ```bash
-npm run lite          # or: node scripts/lite/install.mjs  (Windows: scripts\lite\install.ps1)
+npm run lite
 ```
+
+**No terminal at all?** Double-click the launcher for your system — it checks the
+prerequisites, tells you where to get anything missing, and opens the same setup:
+
+| Windows | macOS | Linux |
+|---|---|---|
+| `scripts\lite\install.cmd` | `scripts/lite/install.command` | `bash scripts/lite/install.sh` |
+
+(The graphical wizard has launchers too: `lite-gui.ps1`, `lite-gui.command`,
+`lite-gui.sh`.)
 
 ### Graphical wizard (`npm run lite:gui`)
 
@@ -104,28 +114,65 @@ enrolled 2FA secret undecryptable.
 
 ## Notes
 
-- **Local media** works out of the box (MinIO on `:9000`, CORS locked to your
-  origin). On a **public domain**, front MinIO with your own `s3.<domain>` and
-  set `OT_S3_PUBLIC_URL` — or turn media off. (A Docker-free local-filesystem
-  media driver is planned — see the [roadmap](../project/ROADMAP_SELFHOST_LITE.md).)
-- **Calls.** With no SFU configured, calls ride the **app WebSocket** as
-  pairwise-encrypted audio — no TURN, no extra ports, nothing to open. That is
-  fine for one-to-one and small groups; it is a mesh, so every participant sends
-  a copy to every other one.
-  For bigger groups, point Lite at a **LiveKit** SFU (not bundled — it needs
-  coturn and open UDP ports). Turn calls on and the installer asks for the
-  **LiveKit URL + API key/secret**, writes them as `OT_LIVEKIT_*` and switches
-  the API to `self_hosted` so it actually uses them. Group calls then go through
-  the SFU; one-to-one keeps the WebSocket relay. Leave the URL blank to stay on
-  the relay. A bundled LiveKit is on the
-  [roadmap](../project/ROADMAP_SELFHOST_LITE.md).
+### Media backends
+
+The installer asks where photos, voice notes and stickers should live.
+
+| | **Files on this server** (default) | **Bundled MinIO** |
+|---|---|---|
+| Containers | none extra | one more |
+| To configure | nothing | a public URL the browser can reach |
+| Where the bytes are | `lite_media` volume, `<bucket>/<key>` | `lite_minio` volume |
+| Backup | a directory copy | a directory copy |
+| Links | signed by the API, expire in minutes | presigned S3, expire in minutes |
+
+**Files on this server** is the default and the recommendation. The API serves
+media from its own origin over links that carry an expiring signature — the same
+capability model a presigned S3 URL has, minus the second container and minus
+the question that stops more self-hosters than everything else combined: *what
+is the public URL of your object storage?* Getting that wrong produces an
+install that looks completely healthy and in which no picture ever loads.
+
+It also serves media slightly more carefully than the object store does: the
+`Content-Type` comes from an allow-list keyed on the file extension rather than
+from whatever the uploader stored, everything that is not an image, video or
+audio file is sent as a download, and `nosniff` is always set.
+
+**Bundled MinIO** stays available (`OT_MEDIA_DRIVER=s3`), and an install created
+before the local driver existed keeps it automatically — switching would point a
+working stack at an empty directory. Move the files yourself first if you want
+to change.
+
+### Calls
+
+One-to-one calls need nothing extra: the audio rides the **app WebSocket** as
+pairwise-encrypted media — no TURN, no extra ports, nothing to open.
+
+Group calls need an SFU, and the installer offers three answers:
+
+- **The bundled one** (default). Adds a `livekit` container. Signalling is
+  proxied by Caddy on the address you already have (`/livekit`), so there is no
+  second hostname and no second certificate. Media needs exactly **one UDP port,
+  7882** — published on loopback in `local` mode and on all interfaces
+  otherwise. On a public server that is the one firewall rule to open; if calls
+  connect and nobody can be heard, that port is the first thing to check.
+- **A LiveKit you already run.** Enter its URL and API key/secret; no container
+  is started.
+- **One-to-one only.** Group calls fall back to the WebSocket relay, which is a
+  mesh — every participant sends a copy to every other one.
+
+The bundled SFU is told which address to advertise (`node_ip` in
+`infra/lite/livekit.yaml`, written by the installer): a container on a bridge
+network otherwise advertises an address no browser can reach, which is the
+reason "just add LiveKit to the compose file" does not work.
 - **`local` mode publishes on `127.0.0.1` only** — it means *this machine*, so
   it is not exposed to your network. (It also avoids a Docker Desktop quirk on
   Windows where the IPv6 listener accepts the connection and then answers
   nothing, which made `http://localhost:<port>` fail outright.) Use **LAN** mode
   to reach it from other devices.
-- Your data lives in Docker volumes (`lite_pgdata`, `lite_minio`). Never
-  `docker compose down -v` unless you mean to erase it.
+- Your data lives in Docker volumes (`lite_pgdata`, `lite_media`, and
+  `lite_minio` on the object-store backend). Never `docker compose down -v`
+  unless you mean to erase it.
 - Turning a feature off removes both its UI and the infra it needs.
 - **The first admin.** The installer asks for a handle and writes it as
   `OT_ADMIN_USERNAME` (→ `ADMIN_BOOTSTRAP_USERNAME` in the API). Register that
@@ -136,8 +183,8 @@ enrolled 2FA secret undecryptable.
   instance takes open sign-ups. Leave it blank and the installer prints the psql
   one-liner instead.
 - **Backups.** `npm run lite:backup` writes `backups/lite-<ts>.tar.gz`: the whole
-  Postgres cluster, the MinIO data directory (when media is on), and
-  `.env.lite`. Restore with
+  Postgres cluster, your media (the local directory or the MinIO data directory,
+  whichever this install uses), and `.env.lite`. Restore with
   `RESTORE_CONFIRM=YES npm run lite:restore backups/lite-….tar.gz`.
   The archive **contains your secrets** — DB password, JWT secret, TOTP wrap
   key — because a dump without them restores a database nobody can read
@@ -182,8 +229,24 @@ Lite поднимает **твой** мессенджер со сквозным 
 ```bash
 git clone https://github.com/therudywolf/OneToThree.git
 cd OneToThree
-npm run lite          # или: node scripts/lite/install.mjs  (Windows: scripts\lite\install.ps1)
+npm run lite:gui      # графический мастер с настоящими галочками (откроется в браузере)
 ```
+
+Привычнее в терминале? Текстовый установщик спрашивает то же самое:
+
+```bash
+npm run lite
+```
+
+**Терминала не хочется?** Запусти двойным щелчком — он проверит, что всё
+установлено, подскажет ссылки на недостающее и откроет ту же установку:
+
+| Windows | macOS | Linux |
+|---|---|---|
+| `scripts\lite\install.cmd` | `scripts/lite/install.command` | `bash scripts/lite/install.sh` |
+
+(У графического мастера тоже есть свои: `lite-gui.ps1`, `lite-gui.command`,
+`lite-gui.sh`.)
 
 Мастер спросит:
 
@@ -205,8 +268,8 @@ npm run lite          # или: node scripts/lite/install.mjs  (Windows: scripts
 
    | Функция | По умолчанию | Тянет |
    | --- | --- | --- |
-   | Медиа (фото/голос/файлы) | вкл | хранилище MinIO |
-   | Звонки (голос/видео) | выкл | LiveKit |
+   | Медиа (фото/голос/файлы) | вкл | ничего (файлы на диске) либо MinIO |
+   | Звонки (голос/видео) | выкл | встроенный LiveKit либо свой |
    | Стикеры (импорт + свои) | вкл | (использует хранилище) |
    | Поиск GIF (Tenor/Giphy) | вкл | сторонние запросы |
    | Push-уведомления | выкл | VAPID-ключи |
@@ -250,26 +313,62 @@ root-пароль только при первом создании тома, п
 
 ## Заметки
 
-- **Локальное медиа** работает из коробки (MinIO на `:9000`, CORS только на твой
-  origin). На **публичном домене** выстави MinIO через свой `s3.<домен>` и задай
-  `OT_S3_PUBLIC_URL` — либо выключи медиа. (Драйвер медиа на локальной ФС без
-  Docker — в [роадмапе](../project/ROADMAP_SELFHOST_LITE.md).)
-- **Звонки.** Без SFU звук идёт **по тому же WebSocket** попарно зашифрованными
-  кадрами — ни TURN, ни лишних портов открывать не нужно. Для 1:1 и небольших
-  групп этого достаточно; это меш, поэтому каждый участник шлёт копию каждому.
-  Для групп побольше подключи **LiveKit** (не встроен — ему нужны coturn и
-  открытые UDP-порты). Включи звонки, установщик спросит **URL LiveKit +
-  API-ключ/секрет**, запишет их в `OT_LIVEKIT_*` и переведёт API в `self_hosted`,
-  чтобы он их действительно использовал. Тогда групповые звонки идут через SFU,
-  а 1:1 остаётся на relay. Оставь URL пустым — останешься на relay. Встроенный
-  LiveKit — в [роадмапе](../project/ROADMAP_SELFHOST_LITE.md).
+### Где лежит медиа
+
+Установщик спрашивает, где хранить фото, голосовые и стикеры.
+
+| | **Файлами на этом сервере** (по умолчанию) | **Во встроенном MinIO** |
+|---|---|---|
+| Контейнеров | ни одного лишнего | на один больше |
+| Что настраивать | ничего | публичный URL, до которого дотянется браузер |
+| Где байты | том `lite_media`, `<bucket>/<key>` | том `lite_minio` |
+| Бэкап | копия каталога | копия каталога |
+| Ссылки | подписывает API, живут минуты | presigned S3, живут минуты |
+
+**Файлами на этом сервере** — по умолчанию и рекомендуется. API отдаёт медиа со
+своего же origin по ссылкам с подписью и сроком годности: та же модель «ссылка и
+есть разрешение», что у presigned S3, но без второго контейнера и без вопроса, о
+который спотыкается больше людей, чем обо всё остальное вместе взятое — *какой у
+твоего объектного хранилища публичный URL?* Неверный ответ даёт инстанс, который
+выглядит полностью здоровым и в котором не грузится ни одна картинка.
+
+И отдаёт он чуть аккуратнее, чем объектное хранилище: `Content-Type` берётся из
+белого списка по расширению, а не из того, что записал загружающий; всё, что не
+картинка, видео или звук, уходит как скачивание; `nosniff` стоит всегда.
+
+**Встроенный MinIO** никуда не делся (`OT_MEDIA_DRIVER=s3`), и инстанс, поставленный
+до появления локального драйвера, остаётся на нём сам — переключение направило бы
+рабочий стек в пустой каталог. Хочешь сменить — сначала перенеси файлы руками.
+
+### Звонки
+
+Для 1:1 ничего лишнего не нужно: звук идёт **по тому же WebSocket** попарно
+зашифрованными кадрами — ни TURN, ни открытых портов.
+
+Групповым нужен SFU, и установщик предлагает три ответа:
+
+- **Встроенный** (по умолчанию). Добавляет контейнер `livekit`. Сигналинг
+  проксирует Caddy на том же адресе, что и всё остальное (`/livekit`), поэтому
+  ни второго хоста, ни второго сертификата не нужно. Медиа нужен ровно **один
+  UDP-порт, 7882** — в режиме `local` он на loopback, в остальных на всех
+  интерфейсах. На публичном сервере это единственное правило файрвола; если
+  звонок соединяется, а никого не слышно — проверять надо именно его.
+- **Свой LiveKit.** Вводишь URL и ключ/секрет; контейнер не поднимается.
+- **Только 1:1.** Групповые падают на WebSocket-relay, а это меш — каждый шлёт
+  копию каждому.
+
+Встроенному SFU установщик прописывает, какой адрес анонсировать (`node_ip` в
+`infra/lite/livekit.yaml`): контейнер в bridge-сети иначе анонсирует адрес, до
+которого не дотянется ни один браузер — по этой причине «просто добавить LiveKit
+в compose» и не работает.
 - **Режим `local` слушает только `127.0.0.1`** — это значит «только эта машина»,
   и в сеть он не выставляется. (Заодно обходится особенность Docker Desktop на
   Windows, где IPv6-слушатель принимает соединение и ничего не отвечает, из-за
   чего `http://localhost:<порт>` просто не открывался.) Чтобы зайти с других
   устройств — режим **LAN**.
-- Данные — в Docker-томах (`lite_pgdata`, `lite_minio`). Не делай
-  `docker compose down -v`, если не хочешь всё стереть.
+- Данные — в Docker-томах (`lite_pgdata`, `lite_media`, а на объектном
+  хранилище ещё и `lite_minio`). Не делай `docker compose down -v`, если не
+  хочешь всё стереть.
 - Выключение функции убирает и её UI, и нужную ей инфраструктуру.
 - **Первый администратор.** Установщик спрашивает ник и пишет его в
   `OT_ADMIN_USERNAME` (→ `ADMIN_BOOTSTRAP_USERNAME` у API). Зарегистрируй
@@ -280,7 +379,8 @@ root-пароль только при первом создании тома, п
   указывай его здесь. Оставишь пустым — установщик напечатает однострочник для
   psql, как раньше.
 - **Бэкапы.** `npm run lite:backup` пишет `backups/lite-<ts>.tar.gz`: весь
-  кластер Postgres, каталог MinIO (если медиа включено) и `.env.lite`.
+  кластер Postgres, медиа (локальный каталог или каталог MinIO — смотря что у
+  этого инстанса) и `.env.lite`.
   Восстановление —
   `RESTORE_CONFIRM=YES npm run lite:restore backups/lite-….tar.gz`.
   В архиве **лежат секреты** — пароль БД, JWT-секрет, ключ обёртки TOTP:

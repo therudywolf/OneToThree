@@ -11,6 +11,9 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { readSecret } from './read-secret.js'
 import { webviewCorsOrigins } from './webview-origins.js'
+import { mediaDriver } from './media-driver.js'
+import { createFsS3Adapter } from './fs-s3-adapter.js'
+import { signLocalMediaUrl } from './local-media-url.js'
 
 function readCredentials(): { accessKeyId: string; secretAccessKey: string } {
   const accessKeyId =
@@ -29,9 +32,16 @@ function readCredentials(): { accessKeyId: string; secretAccessKey: string } {
   return { accessKeyId, secretAccessKey }
 }
 
+/** Bucket the fs driver uses when MINIO_BUCKET is unset. */
+export const DEFAULT_FS_BUCKET = 'onetothree-media'
+
 export function getBucketName(): string {
   const b = process.env.MINIO_BUCKET?.trim()
   if (!b) {
+    // The fs driver has no bucket to name -- it is a directory. Requiring the
+    // variable anyway would reintroduce exactly the kind of mandatory answer
+    // that driver exists to remove.
+    if (mediaDriver() === 'fs') return DEFAULT_FS_BUCKET
     throw new Error('MINIO_BUCKET is not set')
   }
   return b
@@ -45,6 +55,7 @@ export function getAvatarsBucketName(): string {
 }
 
 export function createS3Client(): S3Client {
+  if (mediaDriver() === 'fs') return createFsS3Adapter()
   const endpoint =
     process.env.MINIO_ENDPOINT?.trim() || 'http://127.0.0.1:9000'
   const { accessKeyId, secretAccessKey } = readCredentials()
@@ -69,6 +80,9 @@ export function createS3Client(): S3Client {
  * breaks SigV4 if you only string-replace the host after signing.
  */
 export function createS3ClientForPresigning(): S3Client {
+  // Same store either way: local media URLs are signed by this API and served
+  // by this API, so there is no second, browser-reachable endpoint to point at.
+  if (mediaDriver() === 'fs') return createFsS3Adapter()
   const internal =
     process.env.MINIO_ENDPOINT?.trim() || 'http://127.0.0.1:9000'
   const publicBase = process.env.MINIO_PUBLIC_URL?.trim()
@@ -227,6 +241,11 @@ const DEFAULT_PRESIGN_GET_TTL_S = 300   // 5 min — download link
  * pointing at this URL — so this mainly fixes formatting / consistency, not internal→public rewrites.
  */
 export function rewritePresignedUrlToPublicBase(signedUrl: string): string {
+  // Local media URLs are already final -- and may be root-relative, which the
+  // URL parsing below cannot represent. A stale MINIO_PUBLIC_URL left in an
+  // .env after switching drivers must not rewrite them onto a host that no
+  // longer serves anything.
+  if (mediaDriver() === 'fs') return signedUrl
   const raw = process.env.MINIO_PUBLIC_URL?.trim()
   if (!raw) return signedUrl
   try {
@@ -248,6 +267,15 @@ export async function presignPutObject(params: {
   contentType: string
   expiresIn?: number
 }): Promise<string> {
+  if (mediaDriver() === 'fs') {
+    return signLocalMediaUrl({
+      method: 'PUT',
+      bucket: params.bucket,
+      key: params.key,
+      contentType: params.contentType,
+      expiresInSeconds: params.expiresIn ?? DEFAULT_PRESIGN_PUT_TTL_S,
+    })
+  }
   const cmd = new PutObjectCommand({
     Bucket: params.bucket,
     Key: params.key,
@@ -269,6 +297,14 @@ export async function presignGetObject(params: {
   key: string
   expiresIn?: number
 }): Promise<string> {
+  if (mediaDriver() === 'fs') {
+    return signLocalMediaUrl({
+      method: 'GET',
+      bucket: params.bucket,
+      key: params.key,
+      expiresInSeconds: params.expiresIn ?? DEFAULT_PRESIGN_GET_TTL_S,
+    })
+  }
   const cmd = new GetObjectCommand({
     Bucket: params.bucket,
     Key: params.key,

@@ -20,6 +20,14 @@ ENVFILE=.env.e2e
 # localhost (NOT 127.0.0.1): must match the build-time NEXT_PUBLIC_API_URL origin
 # so the browser, REST and WS share one origin and the session cookie flows.
 BASE_URL=http://localhost:8090
+# ...but this script's own readiness probes must use the literal IPv4 address.
+# Windows resolves `localhost` to ::1 first and Docker Desktop publishes on IPv4
+# only, so curl gets "connection refused" against a stack that is fully healthy
+# and this script spins for its whole timeout before declaring the API dead.
+# Same reason playwright.config.ts pins Chromium's resolver and
+# playwright.global-setup.ts rewrites its fetch targets. Only the probes change;
+# the browser keeps the `localhost` origin the web image was built for.
+PROBE_URL=http://127.0.0.1:8090
 COMPOSE=(docker compose --env-file "$ENVFILE" -f docker-compose.yml -f docker-compose.e2e.yml)
 SERVICES=(db redis minio db-migrate api web-e2e caddy)
 
@@ -54,13 +62,13 @@ fi
 log "waiting for $BASE_URL ..."
 ready=0
 for _ in $(seq 1 60); do
-  if curl -fsS -m 5 "$BASE_URL/health" >/dev/null 2>&1; then ready=1; break; fi
+  if curl -fsS -m 5 "$PROBE_URL/health" >/dev/null 2>&1; then ready=1; break; fi
   sleep 3
 done
 [ "$ready" = "1" ] || { err "API health never came up"; "${COMPOSE[@]}" logs --tail 50 api caddy; exit 1; }
 app=0
 for _ in $(seq 1 40); do
-  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/login" || echo 0)" = "200" ] && { app=1; break; }
+  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$PROBE_URL/login" || echo 0)" = "200" ] && { app=1; break; }
   sleep 3
 done
 [ "$app" = "1" ] || { err "web app never rendered /login"; "${COMPOSE[@]}" logs --tail 50 web-e2e caddy; exit 1; }

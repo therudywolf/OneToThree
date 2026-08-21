@@ -193,6 +193,34 @@ sits flat; a background job failing on a timer climbs steadily, which is exactly
 the shape that once went unnoticed for five days because the only trace was a
 log line nobody read. The same counter is visible in `/admin` → CONFIG.
 
-Prometheus + Grafana themselves are still not deployed: the planned path is a
-separate compose stack under `~/stacks/grafana.onetothree.ru/`, proxied by its
-own Caddy site, scraping the endpoint above.
+### Wired up on the reference deployment
+
+Prometheus, Alertmanager and Grafana already run on this host as their own stack
+(`~/stacks/monitoring`, repo `therudywolf/monitoring`). OneToThree is scraped
+from there — no new stack was needed:
+
+- **Job.** `job_name: onetothree`, target `forestmessenger-api-1:8080`, over the
+  shared `edge` Docker network. The api container publishes no port, so the
+  bearer token never crosses the public edge; nothing about metrics is reachable
+  from the internet.
+- **Token.** `METRICS_TOKEN` in `.env.prod`, and the same value in
+  `~/stacks/monitoring/secrets/onetothree_metrics_token`, mounted read-only into
+  the Prometheus container. That file is **0644 inside a 0700 directory** on
+  purpose: Prometheus runs as uid 65534 and silently fails to read a 0600 file —
+  the same trap that once left LiveKit without its keys.
+- **Dashboard.** `grafana/dashboards/onetothree.json`, provisioned from file, at
+  `/monitoring/d/onetothree`. Scrape state, live build, uptime, sockets, memory,
+  and the warn/error curve.
+- **Alerts.** Group `onetothree` in `prometheus/rules/alerts.yml`:
+
+  | Alert | Fires when | Why that threshold |
+  |---|---|---|
+  | `OneToThreeApiMetricsDown` | `up == 0` for 3 min | The container is running but not serving. The blackbox probe only says the public URL answers |
+  | `OneToThreeErrors` | any error line in 15 min | Errors are rare here; one is worth a look |
+  | `OneToThreeWarningsClimbing` | >10 warn lines in 1 h | The guest sweeper ticks every 5 min, so a job failing on a timer produces ~12/h while a healthy instance produces ~0 |
+  | `OneToThreeApiRestarting` | uptime resets >2× in 1 h | A crash loop looks healthy to every individual probe |
+  | `OneToThreeApiMemoryHigh` | RSS >850 MB for 15 min | The container is capped at 1 GB; the next spike is an OOM kill |
+
+To point a different Prometheus at it, copy the job above and give it the token.
+To turn the whole thing off, remove `METRICS_TOKEN` and restart the api — the
+route stops existing and the target simply goes down.

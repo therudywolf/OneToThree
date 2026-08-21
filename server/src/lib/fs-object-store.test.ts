@@ -122,6 +122,36 @@ describe('put / stat / get', () => {
     expect(await statObject('media', 'big.bin', root)).toBeNull()
   })
 
+  it('writes every chunk of a many-chunk stream', async () => {
+    // The cap is enforced mid-stream, so the counting has to sit in the data
+    // path rather than beside it. A stream that arrives in many small pieces —
+    // which is what an HTTP body actually is — must land byte for byte.
+    const chunks = Array.from({ length: 500 }, (_, i) => Buffer.from(`chunk-${i};`))
+    const expected = Buffer.concat(chunks)
+    const n = await putObject({
+      bucket: 'media',
+      key: 'many-chunks.bin',
+      body: Readable.from(chunks),
+      root,
+    })
+    expect(n).toBe(expected.byteLength)
+    expect(await getObjectBuffer('media', 'many-chunks.bin', root)).toEqual(expected)
+  })
+
+  it('stops at the cap partway through a long stream', async () => {
+    const chunks = Array.from({ length: 100 }, () => Buffer.alloc(1000))
+    await expect(
+      putObject({
+        bucket: 'media',
+        key: 'capped.bin',
+        body: Readable.from(chunks),
+        maxBytes: 5000,
+        root,
+      })
+    ).rejects.toThrow(/OBJECT_TOO_LARGE/)
+    expect(await statObject('media', 'capped.bin', root)).toBeNull()
+  })
+
   it('overwrites in place (restore re-uploads the same key)', async () => {
     await putObject({ bucket: 'media', key: 'k.bin', body: Buffer.from('one'), root })
     await putObject({ bucket: 'media', key: 'k.bin', body: Buffer.from('twotwo'), root })

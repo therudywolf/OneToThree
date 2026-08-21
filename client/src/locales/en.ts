@@ -672,7 +672,7 @@ const en = {
   'settings.linkStepVerify': 'Verify',
   'settings.linkStepDone': 'Done',
   'settings.linkDeviceQrTitle': 'ADD DEVICE :: QR',
-  'settings.linkDeviceQrBody': 'Tap “Add Device” to show a code, then scan it with your new device.',
+  'settings.linkDeviceQrBody': 'Press "Add device" and pick how to connect: scan the code the new device shows, type the 8-character code it shows underneath, or show a code for the new device to scan.',
   'settings.linkDeviceQrTtl': 'The code works for 5 minutes and once only.',
   'settings.pendingExportPrompt': 'Enter your password to save your account backup.',
   'settings.pendingRevokeAllPrompt': 'Enter your password to sign out all your other devices.',

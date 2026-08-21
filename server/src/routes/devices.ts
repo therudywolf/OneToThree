@@ -14,6 +14,7 @@
  *
  * Bidirectional P2P QR vault handoff (see device-rendezvous-store.ts):
  *   POST   /api/devices/link/rendezvous            — create (Mode A with key, Mode B empty)
+ *   POST   /api/devices/link/rendezvous/resolve-code — camera-less Mode A: turn a typed code into the pubkey
  *   POST   /api/devices/link/rendezvous/:id/submit-pubkey — Mode B: new device uploads its key (first write wins)
  *   GET    /api/devices/link/rendezvous/:id/status — Mode B: existing device polls the submitted key
  *   POST   /api/devices/link/rendezvous/:id/deposit — existing device uploads the encrypted vault
@@ -27,6 +28,14 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { users, devices } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import {
+  formatLinkCode,
+  generateLinkCode,
+  hashLinkCode,
+  isValidLinkCode,
+  linkCodeMatches,
+  normalizeLinkCode,
+} from '../lib/link-code.js'
 import { safeEqualNonce, verifyNonceSignatureEcdsaP256 } from '../lib/ecdsa-verify.js'
 import { deletePending, getPending, setChallenge } from '../lib/challenge-store.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
@@ -34,6 +43,9 @@ import { saveLinkToken, consumeLinkToken } from '../lib/link-token-store.js'
 import { verifyTotpSync } from '../lib/totp.js'
 import { decryptTotpSecret } from '../lib/totp-crypto.js'
 import {
+  deleteCodeIndex,
+  resolveCodeIndex,
+  saveCodeIndex,
   saveRendezvous,
   getRendezvous,
   consumeRendezvous,
@@ -68,6 +80,19 @@ const rendezvousCreateSchema = z.object({
    * (existing device shows the QR — the new device submits the key later).
    */
   ephemeral_pubkey: z.string().min(1).max(2000).optional(),
+  /**
+   * Also mint a short code that can be TYPED on the other device.
+   *
+   * Opt-in rather than always: a code is a second credential in the air, and a
+   * device that is going to show a QR anyway should not also print one nobody
+   * needs. Only meaningful together with `ephemeral_pubkey` (Mode A).
+   */
+  want_code: z.boolean().optional(),
+})
+
+const rendezvousResolveCodeSchema = z.object({
+  /** As typed: case, spaces and hyphens are normalised server-side. */
+  code: z.string().min(1).max(32),
 })
 
 const rendezvousSubmitPubkeySchema = z.object({
@@ -85,8 +110,21 @@ const rendezvousDepositSchema = z.object({
    * the QR; Mode B: from the create response). Required so a bearer of the
    * path-leakable rendezvous id alone cannot inject a vault blob.
    */
-  deposit_secret: z.string().min(1).max(200),
+  deposit_secret: z.string().min(1).max(200).optional(),
+  /**
+   * The typed short code, as an alternative to `deposit_secret`. Exactly one of
+   * the two has to check out; which one depends on whether the QR was scanned
+   * or the code was read off the screen.
+   */
+  code: z.string().min(1).max(32).optional(),
 })
+  // Both optional individually, at least one required together. Stating it in
+  // the schema keeps "no credential at all" a 400 -- a malformed request, which
+  // is what it is -- and leaves 403 to mean "a credential was presented and it
+  // was wrong".
+  .refine((b) => typeof b.deposit_secret === 'string' || typeof b.code === 'string', {
+    message: 'deposit_secret or code is required',
+  })
 
 const rendezvousClaimSchema = z.object({
   claim_secret: z.string().min(1).max(256),
@@ -389,6 +427,12 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'INVALID_EPHEMERAL_KEY' })
       }
 
+      // A short code is only meaningful when the key is already attached
+      // (Mode A). In Mode B there is nothing yet for the other side to fetch,
+      // and issuing a code that resolves to an empty rendezvous would just be a
+      // second way to get stuck.
+      const wantCode = parsed.data.want_code === true && ephemeralPubkey !== null
+
       const rendezvousId = randomUUID()
       const claimSecret = randomBytes(32).toString('base64url')
       const claimSecretHash = createHash('sha256').update(claimSecret).digest('hex')
@@ -398,19 +442,82 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       const depositSecret = randomBytes(32).toString('base64url')
       const depositSecretHash = createHash('sha256').update(depositSecret).digest('hex')
 
+      const exp = Date.now() + RENDEZVOUS_TTL_S * 1000
+      const code = wantCode ? generateLinkCode() : null
+
       await saveRendezvous(rendezvousId, {
         ephemeralPubkey,
         claimSecretHash,
         depositSecretHash,
+        codeHash: code ? hashLinkCode(code) : null,
         encBlob: null,
-        exp: Date.now() + RENDEZVOUS_TTL_S * 1000,
+        exp,
       })
+      if (code) await saveCodeIndex(code, rendezvousId, exp)
 
       return reply.send({
         rendezvous_id: rendezvousId,
         claim_secret: claimSecret,
         deposit_secret: depositSecret,
+        // Hyphenated for reading aloud and typing; the server normalises it
+        // back on the way in, so what the user sees is what they can enter.
+        code: code ? formatLinkCode(code) : null,
         expires_in: RENDEZVOUS_TTL_S,
+      })
+    }
+  )
+
+  /**
+   * POST /api/devices/link/rendezvous/resolve-code
+   *
+   * The camera-less half of Mode A. The new device showed a short code instead
+   * of (or as well as) a QR; the existing device's user types it, and this
+   * turns it into the same thing scanning the QR would have produced.
+   *
+   * **Authenticated.** That is the main reason 40 bits of code is enough: only
+   * a logged-in session can redeem one, the per-user budget below is ten an
+   * hour, and the code lives five minutes. The security that does not depend on
+   * arithmetic is the next step — both devices display a verification code
+   * derived from the key this returns, and the user compares them before
+   * anything is sent. A guessed code buys a public key and a visible mismatch.
+   *
+   * Nothing secret is returned: the ephemeral public key is public by
+   * construction, and the deposit is authorised by presenting the code itself.
+   */
+  app.post(
+    '/link/rendezvous/resolve-code',
+    { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
+    async (request, reply) => {
+      const user = await getAuthUser(request, reply)
+      if (!assertAuthed(reply, user)) return
+
+      const body = rendezvousResolveCodeSchema.safeParse(request.body)
+      if (!body.success) {
+        return reply.status(400).send({ error: 'INVALID_BODY' })
+      }
+      const code = normalizeLinkCode(body.data.code)
+      if (!isValidLinkCode(code)) {
+        return reply.status(400).send({ error: 'INVALID_CODE' })
+      }
+
+      const rendezvousId = await resolveCodeIndex(code)
+      if (!rendezvousId) {
+        return reply.status(404).send({ error: 'CODE_NOT_FOUND' })
+      }
+      const entry = await getRendezvous(rendezvousId)
+      // The index outliving its rendezvous is not an error worth distinguishing
+      // from a wrong code: both mean "start again on the other device".
+      if (!entry || !entry.ephemeralPubkey) {
+        await deleteCodeIndex(code)
+        return reply.status(404).send({ error: 'CODE_NOT_FOUND' })
+      }
+      if (entry.encBlob !== null) {
+        return reply.status(409).send({ error: 'RENDEZVOUS_ALREADY_DEPOSITED' })
+      }
+
+      return reply.send({
+        rendezvous_id: rendezvousId,
+        ephemeral_pubkey: entry.ephemeralPubkey,
       })
     }
   )
@@ -531,10 +638,20 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       if (!entry) {
         return reply.status(404).send({ error: 'RENDEZVOUS_NOT_FOUND' })
       }
-      // Authorize the deposit by the deposit secret (constant-time). Knowing the
-      // rendezvous id alone (it travels in the URL path -> logs/history) must not
-      // let anyone inject a vault blob.
-      if (!claimSecretMatches(body.data.deposit_secret, entry.depositSecretHash)) {
+      // Authorize the deposit (constant-time). Knowing the rendezvous id alone
+      // (it travels in the URL path -> logs/history) must not let anyone inject
+      // a vault blob.
+      //
+      // Either credential does it, and they are the same credential wearing
+      // different clothes: the deposit secret came out of the QR, the code was
+      // typed in. Both were shown by the device that created the rendezvous,
+      // and both are checked against a stored hash.
+      const bySecret =
+        typeof body.data.deposit_secret === 'string' &&
+        claimSecretMatches(body.data.deposit_secret, entry.depositSecretHash)
+      const byCode =
+        typeof body.data.code === 'string' && linkCodeMatches(body.data.code, entry.codeHash)
+      if (!bySecret && !byCode) {
         return reply.status(403).send({ error: 'DEPOSIT_SECRET_INVALID' })
       }
       // Mode B: the new device must have submitted its key first — there is no
@@ -547,6 +664,11 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       }
 
       await saveRendezvous(params.data.id, { ...entry, encBlob: body.data.enc_blob })
+      // The code has done its job. Dropping it now means a shoulder-surfer who
+      // read it off the screen cannot resolve it afterwards, and it shortens
+      // the window in which a guess could land from five minutes to however
+      // long the two devices actually took.
+      if (byCode) await deleteCodeIndex(normalizeLinkCode(body.data.code as string))
       return reply.send({ ok: true })
     }
   )

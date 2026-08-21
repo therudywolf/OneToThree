@@ -27,6 +27,15 @@ export type RendezvousSession = {
    * a blob.
    */
   deposit_secret: string
+  /**
+   * Short code the other device's user can TYPE, for when there is no camera
+   * pointed at this screen — a desktop being linked from another desktop, which
+   * is the case the QR flow simply cannot serve. Null unless asked for.
+   *
+   * Hyphenated for reading aloud; the server normalises case, spaces and the
+   * hyphen back out, so what is shown is what can be entered.
+   */
+  code: string | null
   expires_in: number
 }
 
@@ -44,14 +53,18 @@ export type RendezvousSession = {
  * sensitive in the response).
  */
 export async function createRendezvous(
-  ephemeralPubkey?: string
+  ephemeralPubkey?: string,
+  opts: { wantCode?: boolean } = {}
 ): Promise<RendezvousSession> {
   const res = await fetchWithTimeout(BASE, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(
-      ephemeralPubkey ? { ephemeral_pubkey: ephemeralPubkey } : {}
-    ),
+    body: JSON.stringify({
+      ...(ephemeralPubkey ? { ephemeral_pubkey: ephemeralPubkey } : {}),
+      // Opt-in: a code is a second credential in the air, so a flow that is
+      // not going to show one should not mint one.
+      ...(opts.wantCode ? { want_code: true } : {}),
+    }),
   })
   const data = (await res.json().catch(() => ({}))) as Partial<RendezvousSession> & {
     error?: string
@@ -63,7 +76,51 @@ export async function createRendezvous(
     rendezvous_id: data.rendezvous_id,
     claim_secret: data.claim_secret,
     deposit_secret: data.deposit_secret,
+    code: data.code ?? null,
     expires_in: data.expires_in ?? 300,
+  }
+}
+
+export type ResolvedLinkCode =
+  | { status: 'ok'; rendezvousId: string; ephemeralPubkey: string }
+  | { status: 'not_found' }
+  | { status: 'already_used' }
+  | { status: 'malformed' }
+
+/**
+ * Old, authenticated device: turn a typed code into the same thing scanning the
+ * QR would have produced — the new device's ephemeral PUBLIC key.
+ *
+ * The outcomes are separated because they are different instructions to a
+ * person: `malformed` means "check what you typed", `not_found` means "it has
+ * expired, start again on the other device", and `already_used` means somebody
+ * has already linked with it.
+ */
+export async function resolveLinkCode(code: string): Promise<ResolvedLinkCode> {
+  const res = await fetchWithTimeout(`${BASE}/resolve-code`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: sanitizeFetchHeaderRecord({
+      'Content-Type': 'application/json',
+      ...authDeviceHeaders(),
+    }),
+    body: JSON.stringify({ code }),
+  })
+  if (res.status === 400) return { status: 'malformed' }
+  if (res.status === 404) return { status: 'not_found' }
+  if (res.status === 409) return { status: 'already_used' }
+  const data = (await res.json().catch(() => ({}))) as {
+    rendezvous_id?: string
+    ephemeral_pubkey?: string
+    error?: string
+  }
+  if (!res.ok || !data.rendezvous_id || !data.ephemeral_pubkey) {
+    throw new Error(data.error ?? 'LINK_CODE_RESOLVE_FAILED')
+  }
+  return {
+    status: 'ok',
+    rendezvousId: data.rendezvous_id,
+    ephemeralPubkey: data.ephemeral_pubkey,
   }
 }
 
@@ -141,7 +198,11 @@ export async function getRendezvousStatus(id: string): Promise<RendezvousStatus>
 export async function depositToRendezvous(
   id: string,
   encBlob: string,
-  depositSecret: string
+  /**
+   * Either credential the server accepts: the deposit secret out of a scanned
+   * QR, or the code that was typed in. They authorise the same single write.
+   */
+  auth: { depositSecret: string } | { code: string }
 ): Promise<void> {
   const res = await fetchWithTimeout(
     `${BASE}/${encodeURIComponent(id)}/deposit`,
@@ -152,7 +213,10 @@ export async function depositToRendezvous(
         'Content-Type': 'application/json',
         ...authDeviceHeaders(),
       }),
-      body: JSON.stringify({ enc_blob: encBlob, deposit_secret: depositSecret }),
+      body: JSON.stringify({
+        enc_blob: encBlob,
+        ...('code' in auth ? { code: auth.code } : { deposit_secret: auth.depositSecret }),
+      }),
     }
   )
   if (!res.ok) {

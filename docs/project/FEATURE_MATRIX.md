@@ -19,6 +19,7 @@ Legend:
 | TOTP two-factor authentication | implemented | TOTP step-up enforced on sensitive routes |
 | Device management (list, revoke) | implemented | Revoked devices gate all API access |
 | QR device linking | implemented | `link/init` + `link/confirm`; unified `link_token` payload |
+| Device linking by typed code | implemented | `link/rendezvous` with `want_code` + `link/rendezvous/resolve-code`. For the case a QR cannot serve at all — a desktop linked from another desktop, where neither has a camera. 8 Crockford-base32 characters, five minutes, resolvable only by an authenticated session, and gated behind the same verification-code comparison as Mode B |
 | Account recovery (phrase, no-escrow) | implemented | 24-word phrase; `POST /api/auth/recovery/challenge` + `/complete` (sign nonce vs phrase-derived pubkey), `/api/users/me/recovery/{enable,status,disable}`; server holds only ciphertext + a public key |
 | Future-only history for new linked devices | implemented | A newly-linked device is served only post-link messages by the server (`messages.ts`); the chat backlog is never handed to it |
 | JWT denylist (logout/revocation) | implemented | Redis-backed |

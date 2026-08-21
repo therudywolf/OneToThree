@@ -68,6 +68,13 @@ export function LoginQrDevicePanel({ embedded = false }: { embedded?: boolean } 
   const [mode, setMode] = useState<Mode>('show')
   const [status, setStatus] = useState<Status>('idle')
   const [qrValue, setQrValue] = useState<string | null>(null)
+  /**
+   * Mode A: the short code to read out or type on the other device, for the
+   * case the QR cannot serve at all — a desktop being linked from another
+   * desktop, where there is no camera to point at this screen.
+   */
+  const [typingCode, setTypingCode] = useState<string | null>(null)
+  const [typingCodeCopied, setTypingCodeCopied] = useState(false)
   const [verificationCode, setVerificationCode] = useState<string | null>(null)
   const [errorText, setErrorText] = useState<string | null>(null)
   // Live expiry countdown for the waiting (Mode A) / verifying (Mode B) phases.
@@ -145,14 +152,21 @@ export function LoginQrDevicePanel({ embedded = false }: { embedded?: boolean } 
     setStatus('preparing')
     setErrorText(null)
     setQrValue(null)
+    setTypingCode(null)
+    setTypingCodeCopied(false)
     setVerificationCode(null)
     setDeadlineTs(null)
 
     try {
       const kp = await generateLinkEphemeralKeypair()
-      const rdv = await createRendezvous(kp.publicJwk)
+      const rdv = await createRendezvous(kp.publicJwk, { wantCode: true })
       if (stopRef.current) return
       setQrValue(buildLinkQrPayload(rdv.rendezvous_id, kp.publicJwk, rdv.deposit_secret))
+      setTypingCode(rdv.code)
+      // Shown next to the code, never next to the QR alone: a scanned QR is
+      // proof the two screens are in the same room, a typed code is not. This
+      // is the number the user compares before the other device sends anything.
+      setVerificationCode(await deriveLinkVerificationCode(rdv.rendezvous_id, kp.publicJwk))
       setStatus('waiting')
 
       const deadline = Date.now() + rdv.expires_in * 1000
@@ -508,6 +522,63 @@ export function LoginQrDevicePanel({ embedded = false }: { embedded?: boolean } 
                     <p className={`text-center text-[11px] leading-relaxed ${isRetro ? 'p13-classic-copy' : 'text-text-muted/70'}`}>
                       {t('settings.linkQrAimHint')}
                     </p>
+
+                    {/* The no-camera path. A QR assumes a camera pointed at
+                        this screen; linking a desktop from another desktop has
+                        none, and that is the case people actually get stuck on.
+                        Shown, not hidden behind a disclosure, because someone
+                        who needs it is by definition not going to find it by
+                        scanning. */}
+                    {typingCode ? (
+                      <div
+                        className={`space-y-2 p-3 text-center ${
+                          isRetro
+                            ? 'p13-classic-inset'
+                            : isMd3
+                              ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_5%,transparent)]'
+                              : 'border border-neon-cyan/25 bg-void'
+                        }`}
+                      >
+                        <p className={`text-[11px] leading-relaxed ${isRetro ? 'p13-classic-copy' : 'text-text-muted/80'}`}>
+                          {t('login.qrNoCameraHint')}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void navigator.clipboard
+                              ?.writeText(typingCode)
+                              .then(() => {
+                                setTypingCodeCopied(true)
+                                setTimeout(() => setTypingCodeCopied(false), 2000)
+                              })
+                              // Clipboard blocked (insecure context / denied):
+                              // the code stays on screen and selectable, which
+                              // is the only thing that actually has to work.
+                              .catch(() => {})
+                          }}
+                          title={t('common.copy')}
+                          className={`w-full select-all font-mono text-[24px] tracking-[0.35em] transition-opacity hover:opacity-80 ${
+                            isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'
+                          }`}
+                        >
+                          {typingCode}
+                        </button>
+                        {typingCodeCopied ? (
+                          <p className="text-[9px] uppercase tracking-widest text-neon-cyan/80">
+                            {t('common.copied')}
+                          </p>
+                        ) : null}
+                        {verificationCode ? (
+                          <p className={`text-[11px] leading-relaxed ${isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/70'}`}>
+                            {t('login.qrCompareHint')}{' '}
+                            <span className={`font-mono tracking-[0.25em] ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>
+                              {verificationCode}
+                            </span>
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <p className="text-center text-[9px] uppercase tracking-widest text-neon-cyan/80">
                       {t('login.qrShowWaiting')}
                     </p>

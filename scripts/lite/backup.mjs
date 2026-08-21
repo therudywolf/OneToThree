@@ -42,7 +42,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { composeArgs, readExistingEnv } from './lite-core.mjs'
+import { composeArgs, readExistingEnv, resolveMediaDriver } from './lite-core.mjs'
 
 const REPO = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const ENV_FILE = join(REPO, '.env.lite')
@@ -67,13 +67,23 @@ function installedFlags() {
 }
 
 /**
+ * Which media backend this install runs. Blank in an `.env.lite` written before
+ * the local driver existed, which means MinIO — the same reading compose and
+ * the installer use, kept identical here so a backup cannot decide the install
+ * is something other than what is actually running.
+ */
+function installedMediaDriver() {
+  return resolveMediaDriver({ existing: readExistingEnv(REPO) })
+}
+
+/**
  * `docker compose … <args>` through lite-core's `composeArgs`, so the file, the
  * env-file AND the `--profile` activation stay in one place. The profile part
  * is not cosmetic: `minio` is profile-gated, so without it `ps -q minio`
  * cannot see the container on a media-enabled install.
  */
 function compose(args, opts = {}) {
-  return spawnSync('docker', composeArgs(installedFlags(), args), {
+  return spawnSync('docker', composeArgs(installedFlags(), args, { mediaDriver: installedMediaDriver() }), {
     cwd: REPO,
     encoding: 'utf8',
     ...opts,
@@ -133,17 +143,34 @@ function backup() {
     }
     writeFileSync(join(work, 'postgres_dump.sql'), dump.stdout)
 
-    const minio = containerId('minio')
-    if (minio) {
-      line('>> copying the object store…')
-      mkdirSync(join(work, 'minio_data'), { recursive: true })
-      run('docker', ['cp', `${minio}:/data/.`, join(work, 'minio_data')], {
-        stdio: 'inherit',
-      })
+    if (installedMediaDriver() === 'fs') {
+      // The local driver keeps media inside the api container's volume. It has
+      // to be in the archive: a database restored without it leaves every photo
+      // and voice note as a row pointing at a file that is not there — an
+      // install that looks restored and is not.
+      const api = containerId('api')
+      if (api) {
+        line('>> copying media…')
+        mkdirSync(join(work, 'media_data'), { recursive: true })
+        run('docker', ['cp', `${api}:/data/media/.`, join(work, 'media_data')], {
+          stdio: 'inherit',
+        })
+      } else {
+        die('the `api` container is not running — start the stack before backing up media')
+      }
     } else {
-      // Not an error: media is a checkbox, and a text-only install has no
-      // object store to save. Saying so beats a cryptic failure.
-      line('>> no object store on this install (media is off) — skipping')
+      const minio = containerId('minio')
+      if (minio) {
+        line('>> copying the object store…')
+        mkdirSync(join(work, 'minio_data'), { recursive: true })
+        run('docker', ['cp', `${minio}:/data/.`, join(work, 'minio_data')], {
+          stdio: 'inherit',
+        })
+      } else {
+        // Not an error: media is a checkbox, and a text-only install has no
+        // object store to save. Saying so beats a cryptic failure.
+        line('>> no object store on this install (media is off) — skipping')
+      }
     }
 
     // The secrets that make the dump readable. See the header.
@@ -239,6 +266,20 @@ function restore(archivePath) {
       )
     }
 
+    const mediaData = join(work, 'media_data')
+    if (existsSync(mediaData)) {
+      // api is stopped at this point, which is what we want: `docker cp` into a
+      // stopped container is fine, and nothing is reading the directory while
+      // it changes underneath.
+      const api = containerId('api')
+      if (api) {
+        line('>> restoring media…')
+        run('docker', ['cp', `${mediaData}/.`, `${api}:/data/media`])
+      } else {
+        line('>> the archive has media, but there is no api container — skipped')
+      }
+    }
+
     const minioData = join(work, 'minio_data')
     if (existsSync(minioData)) {
       const minio = containerId('minio')
@@ -248,6 +289,16 @@ function restore(archivePath) {
       } else {
         line('>> the archive has media, but this install runs without MinIO — skipped')
       }
+    }
+
+    // An archive from the other driver restores its database and silently
+    // leaves its media behind. Say so rather than letting the operator find out
+    // from a chat full of broken thumbnails.
+    if (existsSync(mediaData) !== (installedMediaDriver() === 'fs')) {
+      line('')
+      line('  ! This archive was taken on the OTHER media backend.')
+      line('    The database is restored; its media is in the archive but was not')
+      line('    loaded. See docs/guides/LITE.md -> Media backends.')
     }
 
     line('>> starting api + web…')

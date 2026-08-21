@@ -31,6 +31,9 @@ import {
   suggestLanIp,
   preflight,
   readExistingEnv,
+  renderLivekitConfig,
+  resolveLivekit,
+  resolveMediaDriver,
 } from '../lite-core.mjs'
 import { checkRequest } from './http-guard.mjs'
 
@@ -118,9 +121,26 @@ const server = createServer(async (req, res) => {
         flags.PUSH === '1'
           ? resolveVapid({ existing, subject: b.vapidSubject, rotate: Boolean(b.rotateVapid) })
           : null
+      // The form sends 'fs' or 's3'. A caller that sends neither but DOES send
+      // an object-store URL means the object store -- that is what every client
+      // written before the local driver existed looks like, and reading it as
+      // "fs, ignore the URL" would silently drop a setting the operator typed.
+      const mediaDriver = resolveMediaDriver({
+        mediaDriver: b.mediaDriver || ((b.s3PublicUrl || '').trim() ? 's3' : ''),
+        existing,
+      })
       const s3PublicUrl = (b.s3PublicUrl || '').trim()
-      const s3Problem = s3UrlProblem({ cfg, flags, s3PublicUrl })
+      const s3Problem = s3UrlProblem({ cfg, flags, s3PublicUrl, mediaDriver })
       if (s3Problem) return json(res, 400, { error: s3Problem })
+
+      // Resolved ONCE: the key it settles on is written to two files, and
+      // deriving it twice would put a different secret in each.
+      let livekit
+      try {
+        livekit = resolveLivekit({ cfg, flags, livekit: b.livekit || {}, existing })
+      } catch (e) {
+        return json(res, 400, { error: e?.message || 'invalid LiveKit configuration' })
+      }
 
       let env
       try {
@@ -128,20 +148,29 @@ const server = createServer(async (req, res) => {
           cfg,
           flags,
           s3PublicUrl,
-          livekit: b.livekit || {},
+          livekit,
           vapid,
           existing,
           // Same knob as the CLI: the API promotes this handle to `creator` on
           // boot while the instance has none. buildEnv single-line-checks it,
           // so a pasted newline is a 400 here, not an injected env line.
           adminUsername: b.adminUsername || '',
+          mediaDriver,
         })
-        writeArtifacts(REPO, env, renderCaddyfile(cfg))
+        writeArtifacts(
+          REPO,
+          env,
+          renderCaddyfile(cfg, { livekitBundled: livekit.bundled }),
+          livekit.bundled
+            ? renderLivekitConfig({ cfg, apiKey: livekit.key, apiSecret: livekit.secret })
+            : ''
+        )
       } catch (e) {
         return json(res, 400, { error: e?.message || 'invalid configuration' })
       }
-      const upArgs = composeArgs(flags, ['up', '-d', '--build'])
-      lastRun = { flags, origin: cfg.origin, mode }
+      const composeOpts = { mediaDriver, livekitBundled: livekit.bundled }
+      const upArgs = composeArgs(flags, ['up', '-d', '--build'], composeOpts)
+      lastRun = { flags, origin: cfg.origin, mode, ...composeOpts }
       return json(res, 200, {
         ok: true,
         mode,
@@ -164,7 +193,10 @@ const server = createServer(async (req, res) => {
         Connection: 'keep-alive',
       })
       const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-      const args = composeArgs(lastRun.flags, ['up', '-d', '--build'])
+      const args = composeArgs(lastRun.flags, ['up', '-d', '--build'], {
+        mediaDriver: lastRun.mediaDriver,
+        livekitBundled: lastRun.livekitBundled,
+      })
       send('log', `$ docker ${args.join(' ')}`)
       const child = spawn('docker', args, { cwd: REPO, shell: process.platform === 'win32' })
       const pump = (buf) =>
@@ -194,7 +226,10 @@ const server = createServer(async (req, res) => {
         // Pipe-separated on purpose: with shell:true (Windows) the tab in a
         // \t-separated --format is eaten by the shell, and every Status card
         // came back empty on exactly the platform the GUI exists for.
-        composeArgs(lastRun.flags, ['ps', '--format', '{{.Service}}|{{.State}}|{{.Status}}']),
+        composeArgs(lastRun.flags, ['ps', '--format', '{{.Service}}|{{.State}}|{{.Status}}'], {
+          mediaDriver: lastRun.mediaDriver,
+          livekitBundled: lastRun.livekitBundled,
+        }),
         { cwd: REPO, encoding: 'utf8', shell: process.platform === 'win32' }
       )
       const containers = (ps.stdout || '')

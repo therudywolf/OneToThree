@@ -2,15 +2,38 @@
 #
 # Generated/driven by `.env.lite` (run `node scripts/lite/install.mjs`). Everything
 # is served from ONE origin behind Caddy (web + /api + /api/ws), so Lite needs a
-# single hostname — or just localhost. The one bundled optional service is pulled
-# in only when its feature is enabled, via a compose profile:
-#   media  → minio   (photos / voice / files / stickers)
+# single hostname — or just localhost.
+#
+# MEDIA. By default there is no object store at all: `OT_MEDIA_DRIVER=fs` keeps
+# photos, voice notes and stickers as files in the `lite_media` volume, and the
+# API serves them from its own origin over expiring signed URLs. That removes
+# the second container AND the question that stopped more self-hosters than
+# everything else combined — "what is the public URL of your object storage" —
+# whose wrong answers produce an install that looks healthy while no picture
+# ever loads.
+#
+# `OT_MEDIA_DRIVER=s3` restores the bundled MinIO, which then has to be pulled
+# in by its compose profile:
 #
 #   docker compose -f docker-compose.lite.yml --profile media up -d --build
 #
-# Calls are NOT bundled: a LiveKit SFU needs coturn + open UDP ports, so Lite
-# points the API at a LiveKit you run (OT_LIVEKIT_* in .env.lite) rather than
-# shipping one. Enabling calls only sets those env vars — no extra container.
+# (The installer picks the profile for you; see scripts/lite/lite-core.mjs.)
+#
+# CALLS. One-to-one calls have never needed anything extra — the audio rides the
+# same encrypted WebSocket the messages do. GROUP calls need an SFU, and Lite now
+# bundles one behind the `calls` profile:
+#
+#   docker compose -f docker-compose.lite.yml --profile calls up -d --build
+#
+# Signalling is proxied by Caddy on the existing origin (/livekit/*), so there is
+# no second hostname and no second certificate. Only media needs its own port:
+# ONE UDP port, 7882. On a public server that is the single firewall rule to
+# open; on localhost and LAN the installer pins the advertised address so the
+# browser knows where to send it.
+#
+# Pointing at a LiveKit you already run instead is still supported and needs no
+# container at all — the installer just writes OT_LIVEKIT_* and leaves the
+# profile off.
 #
 # See docs/guides/LITE.md.
 name: onetothree-lite
@@ -76,6 +99,33 @@ services:
       retries: 15
       start_period: 15s
 
+  livekit:
+    image: livekit/livekit-server:v1.9.1
+    profiles: [calls]
+    restart: unless-stopped
+    mem_limit: 512m
+    command: --config /etc/livekit.yaml
+    volumes:
+      # Written by the installer next to the Caddyfile. Holds the SFU's API
+      # secret, hence 0600 on disk and read-only in here.
+      - ./infra/lite/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      # Media only. Signalling (7880) is NOT published: Caddy proxies it on the
+      # normal origin, so the SFU inherits the site's TLS instead of needing a
+      # certificate of its own.
+      #
+      # OT_LIVEKIT_BIND is loopback in `local` mode for the same reason Caddy's
+      # is: Docker Desktop's IPv6 listener accepts and then answers nothing, and
+      # `local` means this machine anyway.
+      - "${OT_LIVEKIT_BIND:-127.0.0.1:}${OT_LIVEKIT_UDP_PORT:-7882}:7882/udp"
+    networks: [lite]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7880/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
   db-migrate:
     build:
       context: .
@@ -132,7 +182,22 @@ services:
       # first. Without it the only way to get an admin panel on a fresh Lite
       # install was hand-written SQL inside the db container.
       ADMIN_BOOTSTRAP_USERNAME: ${OT_ADMIN_USERNAME:-}
-      # Media (only used when media is on).
+      # Media storage backend.
+      #
+      # Defaults to `s3` here, NOT to the installer's `fs` default, and that
+      # asymmetry is deliberate: an install created before the local driver
+      # existed has no OT_MEDIA_DRIVER in its .env.lite, and defaulting to `fs`
+      # would point a freshly pulled image at an empty directory while every
+      # existing photo sat untouched in MinIO. Silent, and indistinguishable
+      # from data loss. New installs get `fs` written explicitly.
+      MEDIA_DRIVER: ${OT_MEDIA_DRIVER:-s3}
+      MEDIA_FS_ROOT: /data/media
+      # Absolute base the browser reaches this API at, e.g. https://chat.example
+      # .com/api. The web client would survive a relative URL because it is
+      # same-origin here; the Android and desktop shells would not — their page
+      # origin is the WebView's, not the server's.
+      MEDIA_PUBLIC_URL: ${OT_MEDIA_PUBLIC_URL:-}
+      # Media via MinIO (only used when OT_MEDIA_DRIVER=s3).
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_URL: ${OT_S3_PUBLIC_URL:-http://localhost:9000}
       MINIO_ROOT_USER: ${OT_MINIO_USER:-minio}
@@ -161,6 +226,16 @@ services:
       LIVEKIT_URL: ${OT_LIVEKIT_URL:-}
       LIVEKIT_API_KEY: ${OT_LIVEKIT_API_KEY:-}
       LIVEKIT_API_SECRET: ${OT_LIVEKIT_API_SECRET:-}
+      # Where THIS process reaches the SFU's admin API, when that is not where
+      # the browser reaches it. Empty for an external LiveKit (same address for
+      # both); `http://livekit:7880` for the bundled one, because resolving the
+      # public origin from inside this container would hit this container.
+      LIVEKIT_ADMIN_URL: ${OT_LIVEKIT_ADMIN_URL:-}
+    volumes:
+      # Media for the `fs` driver. A plain directory on purpose: `du -sh`, tar
+      # and rsync all work on it, and a media backup is a directory copy rather
+      # than a second database to dump.
+      - lite_media:/data/media
     depends_on:
       db:
         condition: service_healthy
@@ -235,6 +310,7 @@ services:
 
 volumes:
   lite_pgdata:
+  lite_media:
   lite_minio:
   lite_caddy_data:
   lite_caddy_config:

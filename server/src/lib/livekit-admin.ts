@@ -33,9 +33,23 @@ export function signLivekitToken(
   return `${signingInput}.${b64url(sig)}`
 }
 
-/** wss://livekit.host → https://livekit.host (twirp endpoint base). */
+/**
+ * Base URL for LiveKit's own HTTP (twirp) API — participant removal, room admin.
+ *
+ * `LIVEKIT_URL` is the address the BROWSER uses, and the two are not always the
+ * same host. With a LiveKit bundled next to this API, the browser reaches it
+ * through the reverse proxy on the public origin while this process reaches it
+ * over the container network. Resolving the browser URL from inside the api
+ * container would then resolve to the api container itself: a Lite install on
+ * `http://localhost:8099` would send every admin call to its own loopback,
+ * where nothing answers on that path.
+ *
+ * `LIVEKIT_ADMIN_URL` names the server-side address when it differs. Unset, the
+ * behaviour is exactly what it always was.
+ */
 export function livekitHttpUrl(): string | null {
-  const raw = process.env.LIVEKIT_URL?.trim()
+  const admin = process.env.LIVEKIT_ADMIN_URL?.trim()
+  const raw = admin || process.env.LIVEKIT_URL?.trim()
   if (!raw) return null
   return raw.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:')
 }

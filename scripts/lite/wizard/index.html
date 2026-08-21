@@ -66,6 +66,14 @@
   .pill.ok{color:var(--ok);border-color:var(--ok)} .pill.bad{color:var(--bad);border-color:var(--bad)}
   a{color:var(--accent)}
   .hide{display:none}
+  /* Radio cards for the media backend: the choice deserves the same weight as
+     the feature list, because picking wrong is invisible until media breaks. */
+  .radio{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;margin:6px 0;cursor:pointer;
+    border:1px solid var(--line);border-radius:10px;transition:.15s}
+  .radio:hover{background:var(--panel2)}
+  .radio:has(input:checked){border-color:var(--accent);background:var(--panel2)}
+  .radio input{width:17px;height:17px;margin-top:2px;accent-color:var(--accent);flex:none}
+  .radio small{color:var(--muted);font-size:12.5px;line-height:1.45;display:block;margin-top:2px}
   code{background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:12.5px}
 </style>
 </head>
@@ -107,15 +115,42 @@
     <h2>2 · Features</h2>
     <div id="features"></div>
     <div class="cond" id="cond-media">
-      <div class="fld"><label>Public URL of the object store (MinIO) the browser will reach</label>
-        <input id="s3Url" placeholder="http://localhost:9000"></div>
+      <div class="fld"><label>Where photos, voice notes and stickers are stored</label>
+        <label class="radio"><input type="radio" name="mediaDriver" value="fs" checked>
+          <span><b>On this server, as ordinary files</b><br>
+          <small>No extra container and nothing else to configure. The app serves them
+          itself over signed links that expire. Backs up as a directory.</small></span></label>
+        <label class="radio"><input type="radio" name="mediaDriver" value="s3">
+          <span><b>In the bundled MinIO object store</b><br>
+          <small>A second container, plus a public URL the browser has to be able to
+          reach. Choose this if you already have media in MinIO.</small></span></label>
+      </div>
+      <div class="fld hide" id="fld-s3url">
+        <label>Public URL of the object store the browser will reach</label>
+        <input id="s3Url" placeholder="http://localhost:9000">
+      </div>
       <p class="note" id="media-note"></p>
     </div>
     <div class="cond" id="cond-calls">
-      <p class="note">Calls need an external LiveKit server (not bundled). Leave blank to fill in later.</p>
-      <div class="fld"><label>LiveKit WS URL</label><input id="lkUrl" placeholder="wss://livekit.example.com"></div>
-      <div class="fld"><label>LiveKit API key</label><input id="lkKey"></div>
-      <div class="fld"><label>LiveKit API secret</label><input id="lkSecret"></div>
+      <div class="fld"><label>Group calls need a media server (an SFU)</label>
+        <label class="radio"><input type="radio" name="lkMode" value="bundled" checked>
+          <span><b>Use the bundled one</b><br>
+          <small>One more container. Signalling shares this address; only media needs
+          its own port — UDP 7882.</small></span></label>
+        <label class="radio"><input type="radio" name="lkMode" value="external">
+          <span><b>Point at a LiveKit I already run</b><br>
+          <small>You supply its URL and API keys.</small></span></label>
+        <label class="radio"><input type="radio" name="lkMode" value="none">
+          <span><b>One-to-one calls only</b><br>
+          <small>Those need nothing extra — the audio rides the same encrypted
+          connection the messages do.</small></span></label>
+      </div>
+      <div id="lk-external" class="hide">
+        <div class="fld"><label>LiveKit WS URL</label><input id="lkUrl" placeholder="wss://livekit.example.com"></div>
+        <div class="fld"><label>LiveKit API key</label><input id="lkKey"></div>
+        <div class="fld"><label>LiveKit API secret</label><input id="lkSecret"></div>
+      </div>
+      <p class="note" id="calls-note"></p>
     </div>
     <div class="cond" id="cond-push">
       <div class="fld"><label>Push contact address (a VAPID keypair is generated for you)</label>
@@ -189,13 +224,36 @@ function opts(){
   if (mode()==='domain') return { domain: $('#domain').value, acmeEmail: $('#acmeEmail').value }
   return { httpPort: $('#localPort').value }
 }
+function mediaDriver(){
+  return document.querySelector('input[name="mediaDriver"]:checked')?.value || 'fs'
+}
+function lkMode(){
+  return document.querySelector('input[name="lkMode"]:checked')?.value || 'bundled'
+}
 function syncConds(){
   const f = flags()
-  $('#cond-media').classList.toggle('show', !!f.MEDIA)
+  $('#cond-media').classList.toggle('show', !!(f.MEDIA || f.STICKERS))
   $('#cond-calls').classList.toggle('show', !!f.CALLS)
   $('#cond-push').classList.toggle('show', !!f.PUSH)
   const m = mode()
-  $('#media-note').textContent = m==='domain'
+  const s3 = mediaDriver() === 's3'
+  // The object-store URL question only exists for the object store. Showing it
+  // regardless was the single most confusing field in this form: it looks
+  // required, and answering it wrong is invisible until no picture ever loads.
+  $('#fld-s3url').classList.toggle('hide', !s3)
+  const lk = lkMode()
+  $('#lk-external').classList.toggle('hide', lk !== 'external')
+  $('#calls-note').textContent =
+    lk === 'bundled'
+      ? (mode() === 'domain'
+          ? '⚠ Open UDP port 7882 on this server, or group calls connect and stay silent.'
+          : 'Media goes to UDP 7882 on this machine — allow it through the firewall if calls connect but nobody is heard.')
+      : lk === 'none'
+        ? 'Group calls will fall back to the encrypted WebSocket relay.'
+        : ''
+  $('#media-note').textContent = !s3
+    ? 'Media is served from ' + origin() + '/api — same address as everything else.'
+    : m==='domain'
     ? '⚠ On a public domain, front MinIO with your own https s3.<domain> — the :9000 default is not reachable over HTTPS.'
     : m==='lan'
     ? '⚠ On self-signed HTTPS the browser blocks MinIO unless its endpoint is trusted-HTTPS too.'
@@ -207,6 +265,9 @@ function syncConds(){
   if (m==='local') { if (!$('#s3Url').value) $('#s3Url').value = LOCAL_S3 }
   else if ($('#s3Url').value === LOCAL_S3) $('#s3Url').value = ''
 }
+document.querySelectorAll('input[name="mediaDriver"], input[name="lkMode"]').forEach((el) =>
+  el.addEventListener('change', () => { syncConds(); render() })
+)
 function origin(){
   const m = mode(), o = opts()
   if (m==='lan') return `https://${o.host}:${o.httpsPort}`
@@ -215,8 +276,9 @@ function origin(){
 }
 function render(){
   const f = flags(), on = FEATURES.filter(x=>f[x.key]).map(x=>x.key)
-  const media = f.MEDIA || f.STICKERS
-  const cmd = `docker compose --env-file .env.lite -f docker-compose.lite.yml${media?' --profile media':''} up -d --build`
+  const media = (f.MEDIA || f.STICKERS) && mediaDriver() === 's3'
+  const calls = f.CALLS && lkMode() === 'bundled'
+  const cmd = `docker compose --env-file .env.lite -f docker-compose.lite.yml${media?' --profile media':''}${calls?' --profile calls':''} up -d --build`
   $('#summary').innerHTML =
     `mode      <b>${mode()}</b>  →  <b>${origin()}</b>\n` +
     `features  <b>${on.join(', ')||'(none)'}</b>\n` +
@@ -228,8 +290,11 @@ $('#btnGen').addEventListener('click', async () => {
   $('#btnGen').disabled = true; $('#genMsg').textContent = 'writing…'
   const body = {
     mode: mode(), opts: opts(), flags: flags(),
-    s3PublicUrl: $('#s3Url').value,
-    livekit: { url: $('#lkUrl').value, key: $('#lkKey').value, secret: $('#lkSecret').value },
+    mediaDriver: mediaDriver(),
+    s3PublicUrl: mediaDriver() === 's3' ? $('#s3Url').value : '',
+    livekit: lkMode() === 'external'
+      ? { url: $('#lkUrl').value, key: $('#lkKey').value, secret: $('#lkSecret').value }
+      : { bundled: lkMode() === 'bundled' },
     vapidSubject: $('#pushSubject').value,
     adminUsername: $('#adminUser').value,
   }

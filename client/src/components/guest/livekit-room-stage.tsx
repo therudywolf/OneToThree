@@ -27,7 +27,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type ReactNode,
 } from 'react'
 import type {
   RemoteParticipant,
@@ -43,7 +42,15 @@ import type {
 import { isGuestParticipant } from '@/lib/livekit-call-manager'
 import { toastError } from '@/store/toastStore'
 import { useTranslation } from '@/hooks/use-translation'
-import { GuestLanguageToggle } from '@/components/guest/guest-locale'
+// Re-exported, not defined here: the card is a leaf component (see
+// center-card.tsx) so the temp-chat screens can use it without importing this
+// module's call pipeline. Kept as a re-export because the guest call screens
+// import both from here in one statement.
+// This module also USES them (the connecting / failed states below), so import
+// and re-export rather than a bare `export … from`.
+import { CenterCard, Spinner } from '@/components/guest/center-card'
+
+export { CenterCard, Spinner }
 import {
   applyPreferredAudioOutput,
   loadCamEffectImage,
@@ -83,44 +90,6 @@ function displayName(p: RemoteParticipant): string {
 // ─── Small UI atoms (shared with the guest entry screens) ───────────────────
 
 /** `wide` is for the pre-join check, which carries a video preview. */
-export function CenterCard({
-  children,
-  wide = false,
-}: {
-  children: ReactNode
-  wide?: boolean
-}) {
-  return (
-    <div className="flex min-h-dvh items-center justify-center bg-void px-4 py-6 text-text-primary">
-      <div
-        className={`relative w-full rounded-2xl border border-border-strong bg-surface-elevated p-6 shadow-xl ${
-          wide ? 'max-w-md' : 'max-w-sm'
-        }`}
-      >
-        {/*
-          The language switch lives HERE, on the shared card, so it is in the
-          same corner of every guest screen — entry, waiting, denied, expired.
-          A guest arrives from a link with no account and no settings menu; a
-          toggle that only appeared on one of eight screens would be worse than
-          none, because they would learn it exists and then not find it again.
-        */}
-        <GuestLanguageToggle className="absolute right-3 top-3" />
-        {children}
-      </div>
-    </div>
-  )
-}
-
-export function Spinner() {
-  const { t } = useTranslation()
-  return (
-    <div
-      className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-neon-cyan"
-      aria-label={t('common.loading')}
-    />
-  )
-}
-
 function MicIcon({ off }: { off: boolean }) {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

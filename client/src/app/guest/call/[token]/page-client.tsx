@@ -36,7 +36,6 @@ import {
   Spinner,
   type LiveKitGrant,
 } from '@/components/guest/livekit-room-stage'
-import { useGuestLocaleBootstrap } from '@/components/guest/guest-locale'
 import { MediaCheck } from '@/components/media/media-check'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -63,10 +62,6 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { t } = useTranslation()
-  // A guest has no settings screen and no account — the only language signal
-  // there is comes from their browser. Applied once, and only if nothing was
-  // ever chosen in this browser.
-  useGuestLocaleBootstrap()
   // Static export ships only /guest/call/_ — accept ?token= there (join/[code]
   // pattern).
   const token =

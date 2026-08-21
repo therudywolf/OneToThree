@@ -42,9 +42,9 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { composeArgs, readExistingEnv } from './lite-core.mjs'
 
 const REPO = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
-const COMPOSE = ['-f', join(REPO, 'docker-compose.lite.yml')]
 const ENV_FILE = join(REPO, '.env.lite')
 const BACKUP_DIR = process.env.OT_BACKUP_DIR || join(REPO, 'backups')
 
@@ -54,13 +54,30 @@ const die = (s) => {
   process.exit(1)
 }
 
-/** `docker compose … <args>`, always with Lite's file and env-file. */
+/**
+ * The feature flags this install was generated with, read back out of
+ * `.env.lite`. Only the ones `composeArgs` turns into `--profile` matter here.
+ */
+function installedFlags() {
+  const env = readExistingEnv(REPO)
+  return {
+    MEDIA: env.OT_ENABLE_MEDIA ?? '0',
+    STICKERS: env.OT_ENABLE_STICKERS ?? '0',
+  }
+}
+
+/**
+ * `docker compose … <args>` through lite-core's `composeArgs`, so the file, the
+ * env-file AND the `--profile` activation stay in one place. The profile part
+ * is not cosmetic: `minio` is profile-gated, so without it `ps -q minio`
+ * cannot see the container on a media-enabled install.
+ */
 function compose(args, opts = {}) {
-  return spawnSync(
-    'docker',
-    ['compose', '--env-file', ENV_FILE, ...COMPOSE, ...args],
-    { cwd: REPO, encoding: 'utf8', ...opts }
-  )
+  return spawnSync('docker', composeArgs(installedFlags(), args), {
+    cwd: REPO,
+    encoding: 'utf8',
+    ...opts,
+  })
 }
 
 /** Container id of a service, or '' when it is not running (profile off). */
@@ -99,10 +116,18 @@ function backup() {
 
   try {
     line('>> dumping Postgres…')
-    const dump = spawnSync('docker', ['exec', db, 'pg_dumpall', '-U', 'forest'], {
-      encoding: 'buffer',
-      maxBuffer: 1024 * 1024 * 1024,
-    })
+    // --clean --if-exists: the restore below replays this dump into the SAME
+    // still-initialized cluster. Without the DROPs the replay is a flood of
+    // "already exists" and duplicate-key errors, psql still exits 0, and the
+    // tool reports "restored" over data it never actually replaced.
+    const dump = spawnSync(
+      'docker',
+      ['exec', db, 'pg_dumpall', '-U', 'forest', '--clean', '--if-exists'],
+      {
+        encoding: 'buffer',
+        maxBuffer: 1024 * 1024 * 1024,
+      }
+    )
     if (dump.status !== 0) {
       die(`pg_dumpall failed: ${dump.stderr?.toString().trim() ?? ''}`)
     }
@@ -144,6 +169,28 @@ function backup() {
 
 /* ─────────────────────────────── restore ─────────────────────────────── */
 
+/**
+ * The psql errors that mean the restore did NOT do what it claims.
+ *
+ * psql exits 0 even after a flood of failed statements, so the exit code alone
+ * would let a truncated or version-incompatible dump print "restored" over a
+ * database it never replaced — the same silent-success shape this tool exists
+ * to avoid.
+ *
+ * `ON_ERROR_STOP` is not usable instead: the dump is taken with
+ * `--clean --if-exists`, so pg_dumpall emits a `DROP ROLE forest` that
+ * necessarily fails — that is the role this very connection authenticated as.
+ * That ONE error is expected in every same-cluster restore; anything else is
+ * real. Exported for the test.
+ */
+export function unexpectedRestoreErrors(stderr) {
+  return String(stderr)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => /^(ERROR|FATAL|PANIC):/.test(l))
+    .filter((l) => !/current user cannot be dropped/i.test(l))
+}
+
 function restore(archivePath) {
   const archive = resolve(REPO, archivePath)
   if (!existsSync(archive)) die(`archive not found: ${archive}`)
@@ -167,8 +214,12 @@ function restore(archivePath) {
 
     // Stop the app before touching its database — restoring underneath a live
     // API is how you get half-applied state and a very confusing bug report.
+    // A failed stop must abort: the whole point is that nothing is writing.
     line('>> stopping api + web…')
-    compose(['stop', 'api', 'web'], { stdio: 'inherit' })
+    const stopped = compose(['stop', 'api', 'web'], { stdio: 'inherit' })
+    if (stopped.status !== 0) {
+      die('could not stop api + web — refusing to restore underneath a live API')
+    }
 
     line('>> restoring Postgres…')
     const psql = spawnSync(
@@ -178,6 +229,14 @@ function restore(archivePath) {
     )
     if (psql.status !== 0) {
       die(`psql failed: ${psql.stderr?.toString().trim() ?? ''}`)
+    }
+    const unexpected = unexpectedRestoreErrors(psql.stderr?.toString() ?? '')
+    if (unexpected.length > 0) {
+      die(
+        `the restore reported ${unexpected.length} error(s) — the database is ` +
+          `NOT in the state the archive describes:\n    ` +
+          unexpected.slice(0, 10).join('\n    ')
+      )
     }
 
     const minioData = join(work, 'minio_data')
@@ -205,8 +264,16 @@ function restore(archivePath) {
 
 /* ─────────────────────────────── main ─────────────────────────────── */
 
-const args = process.argv.slice(2)
-if (args[0] === '--restore' || args[0] === 'restore') {
+// Only when run as a command. Without this guard, importing the module to test
+// `unexpectedRestoreErrors` would start a backup against the developer's own
+// stack, for real.
+const invokedDirectly =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+
+const args = invokedDirectly ? process.argv.slice(2) : []
+if (!invokedDirectly) {
+  /* imported: expose the helpers, run nothing */
+} else if (args[0] === '--restore' || args[0] === 'restore') {
   const target = args[1]
   if (!target) die('usage: node scripts/lite/backup.mjs --restore <archive>')
   restore(target)

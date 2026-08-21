@@ -30,8 +30,12 @@ import {
   type UserGroup,
 } from '@/lib/api/admin'
 
-/** Human labels — this console is Russian-facing, like the rest of the panel. */
-const GROUP_LABEL: Record<AdminSettingRow['group'], string> = {
+/**
+ * Human labels — this console is Russian-facing, like the rest of the panel.
+ * A group with no entry here still renders, under its raw key: the server
+ * decides which groups exist, and a missing translation must not hide knobs.
+ */
+const GROUP_LABEL: Record<string, string> = {
   registration: 'Регистрация',
   guests: 'Гостевые ссылки',
   media: 'Медиа',
@@ -64,28 +68,31 @@ const SETTING_LABEL: Record<string, { title: string; hint: string }> = {
   },
 }
 
-const FLAG_LABEL: Record<string, string> = {
-  media: 'Медиа (фото, голос, файлы)',
-  calls: 'Звонки',
-  stickers: 'Стикеры',
-  gif: 'GIF',
-  push: 'Push-уведомления',
-  twofa: 'Двухфакторная аутентификация',
-  admin: 'Админ-панель',
-  groups: 'Группы',
-  guests: 'Гостевые ссылки',
+/**
+ * Label + env var per feature flag, in ONE record.
+ *
+ * They were two parallel maps keyed by the same nine names, so adding a flag
+ * meant touching both — and forgetting the second showed a flag with no env-var
+ * name, which is the actionable half for an operator who needs to know what to
+ * put in `.env`. A flag the server reports but this map does not know still
+ * renders: `envOf` derives the conventional name, so a new FEATURE_* is
+ * labelled correctly without a client release.
+ */
+const FLAGS: Record<string, { label: string; env?: string }> = {
+  media: { label: 'Медиа (фото, голос, файлы)' },
+  calls: { label: 'Звонки' },
+  stickers: { label: 'Стикеры' },
+  gif: { label: 'GIF' },
+  push: { label: 'Push-уведомления' },
+  twofa: { label: 'Двухфакторная аутентификация', env: 'FEATURE_2FA' },
+  admin: { label: 'Админ-панель' },
+  groups: { label: 'Группы' },
+  guests: { label: 'Гостевые ссылки' },
 }
 
-const FLAG_ENV: Record<string, string> = {
-  media: 'FEATURE_MEDIA',
-  calls: 'FEATURE_CALLS',
-  stickers: 'FEATURE_STICKERS',
-  gif: 'FEATURE_GIF',
-  push: 'FEATURE_PUSH',
-  twofa: 'FEATURE_2FA',
-  admin: 'FEATURE_ADMIN',
-  groups: 'FEATURE_GROUPS',
-  guests: 'FEATURE_GUESTS',
+/** `twofa → FEATURE_2FA` is the one name the convention does not produce. */
+function envOf(key: string): string {
+  return FLAGS[key]?.env ?? `FEATURE_${key.toUpperCase()}`
 }
 
 function fmtUptime(ms: number): string {
@@ -290,7 +297,11 @@ export function InstanceSettingsPanel({
     )
   }
 
-  const groups = ['registration', 'guests', 'media'] as const
+  // Derived from what the server sent, not a hardcoded trio. The settings
+  // registry promises that adding a knob there is the only step needed to
+  // expose it here — a fixed list quietly breaks that promise for any knob in
+  // a new group: the server sends it, the panel renders nothing, no error.
+  const groups = [...new Set(rows.map((r) => r.group))]
 
   return (
     <div className="space-y-6">
@@ -417,7 +428,7 @@ export function InstanceSettingsPanel({
         return (
           <section key={g}>
             <p className="mb-2 text-[9px] uppercase tracking-[0.3em] text-neon-cyan">
-              {GROUP_LABEL[g]}
+              {GROUP_LABEL[g] ?? g}
             </p>
             <div className="space-y-2">
               {list.map((row) => (
@@ -455,8 +466,8 @@ export function InstanceSettingsPanel({
               className="flex items-center justify-between gap-2 border border-border-strong px-2.5 py-1.5 text-[10px]"
             >
               <span className="min-w-0 truncate text-text-muted">
-                {FLAG_LABEL[key] ?? key}
-                <span className="ml-1 text-text-muted/50">{FLAG_ENV[key] ?? ''}</span>
+                {FLAGS[key]?.label ?? key}
+                <span className="ml-1 text-text-muted/50">{envOf(key)}</span>
               </span>
               <span
                 className={`shrink-0 uppercase tracking-widest ${on ? 'text-success' : 'text-text-muted/50'}`}

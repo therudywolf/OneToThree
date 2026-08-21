@@ -18,7 +18,7 @@
 
 import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CenterCard, Spinner } from '@/components/guest/livekit-room-stage'
+import { CenterCard, Spinner } from '@/components/guest/center-card'
 import { useTranslation } from '@/hooks/use-translation'
 
 export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {

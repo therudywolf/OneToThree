@@ -12,6 +12,18 @@ import { createSafeJSONStorage } from '@/lib/safe-zustand-storage'
 
 export type LocaleSegment = 'en' | 'ru'
 
+/**
+ * The localStorage key this store persists under.
+ *
+ * Exported because two other places have to read it directly — the blocking
+ * theme/locale bootstrap in `app/layout.tsx` (which runs before React) and the
+ * guest-locale bootstrap (which needs to know whether a choice was EVER made).
+ * They used to hardcode the string; rename or version this key without updating
+ * them and the guest bootstrap silently decides nobody ever chose a language,
+ * overwriting a returning user's preference on every guest page.
+ */
+export const LOCALE_PERSIST_KEY = 'fm_linguistic_config'
+
 type LinguisticState = {
   // [DATA_NODE]
   module: LocaleSegment
@@ -35,7 +47,7 @@ export const useLocaleStore = create<LinguisticState>()(
         set({ module: get().module === 'en' ? 'ru' : 'en' }),
     }),
     {
-      name: 'fm_linguistic_config',
+      name: LOCALE_PERSIST_KEY,
       storage: createSafeJSONStorage(),
       // Изолируем только необходимые данные для сохранения
       partialize: (state) => ({ module: state.module }),

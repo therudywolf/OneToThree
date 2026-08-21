@@ -137,6 +137,12 @@ On boot the API promotes that account to the **creator** group — provided the
 instance has no creator yet. Once one exists the variable is inert, so it is
 safe to leave in place (and tidier to remove).
 
+**Register the account first.** The promotion matches on the handle, so if you
+name one that nobody has registered yet on a server with open sign-ups, a
+stranger who claims that handle before you is the account the next restart
+promotes. Register, then set the variable — or set it while sign-ups are
+closed. The API logs a warning on every boot where the handle does not exist.
+
 4. Log out and back in, then open `/admin`
 
 <details>

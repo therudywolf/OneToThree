@@ -40,6 +40,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { instanceSettings } from '../db/schema.js'
+import { isEnvFalse, isEnvTrue } from './feature-flags.js'
 
 /** A knob's declared shape. `env` names the variable it falls back to. */
 export type SettingDef =
@@ -49,8 +50,6 @@ export type SettingDef =
       env: string
       default: boolean
       group: SettingGroup
-      /** Set when changing the value only takes effect after a restart. */
-      restartRequired?: boolean
     }
   | {
       key: string
@@ -60,10 +59,9 @@ export type SettingDef =
       min: number
       max: number
       group: SettingGroup
-      restartRequired?: boolean
     }
 
-export type SettingGroup = 'registration' | 'guests' | 'media'
+export type SettingGroup = 'registration' | 'guests'
 
 export type SettingValue = boolean | number
 
@@ -90,7 +88,7 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     env: 'GUEST_LINK_TTL_HOURS',
     default: 24,
     min: 1,
-    max: 720,
+    max: 8760,
     group: 'guests',
   },
   {
@@ -108,7 +106,7 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     env: 'GUEST_CHAT_TTL_HOURS',
     default: 12,
     min: 1,
-    max: 168,
+    max: 8760,
     group: 'guests',
   },
   {
@@ -117,7 +115,7 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     env: 'GUEST_MAX_LINKS_PER_USER',
     default: 20,
     min: 1,
-    max: 500,
+    max: 10000,
     group: 'guests',
   },
   {
@@ -126,7 +124,7 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     env: 'GUEST_MAX_ACTIVE',
     default: 50,
     min: 1,
-    max: 5000,
+    max: 100000,
     group: 'guests',
   },
 ] as const
@@ -142,19 +140,20 @@ export function getSettingDef(key: string): SettingDef | undefined {
 /* ─────────────────────────── env parsing ─────────────────────────── */
 
 /**
- * Same truthiness rules as `feature-flags.ts` (`0|false|no|off` → false), so a
- * `.env` that reads `FEATURE_OPEN_REGISTRATION=off` means the same thing to the
- * flag reader and to this module. Anything unparseable is ignored rather than
- * treated as `false`: a typo must not silently close registration.
+ * The exact truthiness vocabulary `feature-flags.ts` uses — imported, not
+ * restated, so one `.env` line cannot mean different things to the two readers.
+ * Anything unparseable is ignored rather than treated as `false`: a typo must
+ * not silently close registration.
  */
 function parseEnvBoolean(raw: string | undefined): boolean | undefined {
-  if (raw == null) return undefined
-  const v = raw.trim()
-  if (!v) return undefined
-  if (/^(0|false|no|off)$/i.test(v)) return false
-  if (/^(1|true|yes|on)$/i.test(v)) return true
+  if (raw == null || !raw.trim()) return undefined
+  if (isEnvFalse(raw)) return false
+  if (isEnvTrue(raw)) return true
   return undefined
 }
+
+/** Warn once per variable, not once per request. */
+const warnedClamped = new Set<string>()
 
 function parseEnvInteger(
   raw: string | undefined,
@@ -163,7 +162,22 @@ function parseEnvInteger(
   if (raw == null) return undefined
   const n = Number(raw.trim())
   if (!Number.isFinite(n)) return undefined
-  return clampInteger(Math.trunc(n), def)
+  const truncated = Math.trunc(n)
+  const clamped = clampInteger(truncated, def)
+  // These knobs had no upper bound before the registry existed, so an install
+  // whose `.env` sits above the new ceiling would otherwise change behaviour
+  // silently — and the panel would show the clamped number as if `.env` said
+  // it. Say so, once, naming both values.
+  if (clamped !== truncated && !warnedClamped.has(def.env)) {
+    warnedClamped.add(def.env)
+    process.stderr.write(
+      `${JSON.stringify({
+        level: 'warn',
+        msg: `${def.env}=${truncated} is outside the supported range ${def.min}…${def.max}; using ${clamped}`,
+      })}\n`
+    )
+  }
+  return clamped
 }
 
 function clampInteger(
@@ -224,28 +238,20 @@ async function loadOverrides(): Promise<Map<string, SettingValue>> {
 async function overrides(): Promise<Map<string, SettingValue>> {
   if (cache && Date.now() < cacheExpiresAt) return cache
   // Collapse a thundering herd: a cold cache under load must issue ONE query,
-  // not one per concurrent request.
-  const pending = (inFlight ??= loadOverrides()
+  // not one per concurrent request. Fail SOFT: the database being briefly
+  // unreachable must not take registration or guest links down with it — serve
+  // the last snapshot (or the bare env/default layer), and retry on the next
+  // request rather than caching the failure.
+  return (inFlight ??= loadOverrides()
     .then((map) => {
       cache = map
       cacheExpiresAt = Date.now() + CACHE_TTL_MS
       return map
     })
-    .catch((err: unknown) => {
-      // Fail SOFT: the database being briefly unreachable must not take
-      // registration or guest links down with it. Serve the env/default layer,
-      // and retry on the next request rather than caching the failure.
-      if (cache) return cache
-      throw err
-    })
+    .catch(() => cache ?? new Map<string, SettingValue>())
     .finally(() => {
       inFlight = null
     }))
-  try {
-    return await pending
-  } catch {
-    return new Map()
-  }
 }
 
 /* ─────────────────────────── the readers ─────────────────────────── */
@@ -287,7 +293,6 @@ export type SettingSnapshotRow = {
   effective: SettingValue
   min?: number
   max?: number
-  restart_required?: boolean
 }
 
 /** Every knob with its whole resolution chain — what the panel renders. */
@@ -306,7 +311,6 @@ export async function getSettingsSnapshot(): Promise<SettingSnapshotRow[]> {
       override: override ?? null,
       effective: override ?? envValue,
       ...(def.type === 'integer' ? { min: def.min, max: def.max } : {}),
-      ...(def.restartRequired ? { restart_required: true } : {}),
     }
   })
 }

@@ -45,7 +45,7 @@ import { RESERVED_NICKNAMES } from '../lib/nickname.js'
 import { areOnline, broadcastToUsers } from '../ws/registry.js'
 import { sendNativePushToUser, sendPushToUser } from '../lib/push.js'
 import { purgeGuestUser } from '../lib/guest-purge.js'
-import { getIntegerSetting } from '../lib/instance-settings.js'
+import { getIntegerSetting, getSettingDef } from '../lib/instance-settings.js'
 
 // ─── Knobs (concept §6.4) ────────────────────────────────────────
 //
@@ -65,6 +65,11 @@ const maxActiveGuests = () => getIntegerSetting('guest_max_active')
 const guestChatTtlHours = () => getIntegerSetting('guest_chat_ttl_hours')
 /** Default seats on a meeting link — a meeting is not a tête-à-tête. */
 const meetingDefaultSeats = () => getIntegerSetting('guest_meeting_seats')
+
+/** The bounds the panel enforces, so the route cannot disagree with them. */
+const SEATS_DEF = getSettingDef('guest_meeting_seats')
+const SEATS_MIN = SEATS_DEF?.type === 'integer' ? SEATS_DEF.min : 1
+const SEATS_MAX = SEATS_DEF?.type === 'integer' ? SEATS_DEF.max : 50
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
@@ -86,8 +91,15 @@ const createInviteSchema = z.object({
   purpose: z.enum(['call', 'chat']),
   chat_id: z.string().uuid().optional(),
   can_publish: z.boolean().optional().default(true),
-  /** Seats. Omitted → 1 for a temp chat, the meeting-seats setting otherwise. */
-  max_uses: z.number().int().min(1).max(50).optional(),
+  /**
+   * Seats. Omitted → 1 for a temp chat, the meeting-seats setting otherwise.
+   *
+   * The ceiling is the registry's, not a literal: with a third copy of "50" the
+   * explicit-value path could become stricter than the default path — raise the
+   * setting and links minted WITHOUT `max_uses` would get the new number while
+   * anyone asking for it by name got a 400.
+   */
+  max_uses: z.number().int().min(SEATS_MIN).max(SEATS_MAX).optional(),
 })
 
 const kickBodySchema = z.object({

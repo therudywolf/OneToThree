@@ -26,16 +26,17 @@
 
 import { useEffect } from 'react'
 import { Languages } from 'lucide-react'
-import { useLocaleStore, type LocaleSegment } from '@/store/localeStore'
+import {
+  LOCALE_PERSIST_KEY,
+  useLocaleStore,
+  type LocaleSegment,
+} from '@/store/localeStore'
 import { useTranslation } from '@/hooks/use-translation'
-
-/** The key `localeStore`'s `persist` middleware writes into localStorage. */
-const PERSIST_KEY = 'fm_linguistic_config'
 
 /** True when this browser has never made a language choice. */
 function hasStoredChoice(): boolean {
   try {
-    return window.localStorage.getItem(PERSIST_KEY) != null
+    return window.localStorage.getItem(LOCALE_PERSIST_KEY) != null
   } catch {
     // Private mode / storage blocked: treat it as "chosen" and leave the
     // default alone rather than fighting an unreadable store on every mount.

@@ -51,8 +51,7 @@ import { GuestChatSocket } from '@/lib/guest-chat/socket'
 // here with the comment "same look as /guest/call", which is exactly the shape
 // that drifts: the shared one has since grown the language toggle every guest
 // screen needs.
-import { CenterCard, Spinner } from '@/components/guest/livekit-room-stage'
-import { useGuestLocaleBootstrap } from '@/components/guest/guest-locale'
+import { CenterCard, Spinner } from '@/components/guest/center-card'
 import { useTranslation } from '@/hooks/use-translation'
 import { GuestChatView } from './chat-view'
 
@@ -78,7 +77,6 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { t } = useTranslation()
-  useGuestLocaleBootstrap()
   // Static export ships only /guest/chat/_ — accept ?token= there.
   const token =
     routeToken && routeToken !== '_'

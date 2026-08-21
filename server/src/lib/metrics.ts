@@ -27,14 +27,37 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { getLogCounters } from './log-counters.js'
+import { readSecret } from './read-secret.js'
 import { socketCounts } from '../ws/registry.js'
+
+/** Shorter than this and the token is treated as unset. */
+const MIN_TOKEN_CHARS = 16
+
+/** Warn once, not once per call — `metricsToken()` runs per request. */
+let warnedShortToken = false
 
 /** The configured token, or null when metrics are disabled. */
 export function metricsToken(): string | null {
-  const raw = process.env.METRICS_TOKEN?.trim()
+  // readSecret: METRICS_TOKEN_FILE (Docker secret) wins over the plain env,
+  // like every other credential this server holds.
+  const raw = readSecret('METRICS_TOKEN')
   if (!raw) return null
   // A short token is worse than none: it invites a guess and looks protected.
-  if (raw.length < 16) return null
+  // Say so — an operator who set one and then watched every scrape 404 has no
+  // other way to find out why, and silent misconfiguration is the exact shape
+  // of failure this codebase keeps paying for.
+  if (raw.length < MIN_TOKEN_CHARS) {
+    if (!warnedShortToken) {
+      warnedShortToken = true
+      process.stderr.write(
+        `${JSON.stringify({
+          level: 'warn',
+          msg: `METRICS_TOKEN is ${raw.length} characters; at least ${MIN_TOKEN_CHARS} are required. GET /metrics stays disabled.`,
+        })}\n`
+      )
+    }
+    return null
+  }
   return raw
 }
 

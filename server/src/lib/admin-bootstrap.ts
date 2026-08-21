@@ -26,6 +26,12 @@
  * - **Never creates an account.** The username has to exist — it is promoted,
  *   not conjured, so the env var alone grants nobody anything: whoever holds the
  *   account's keys is still the only one who can sign in as it.
+ * - **It promotes whoever OWNS that handle**, which matters on an instance with
+ *   open registration: name a handle that is not registered yet and a stranger
+ *   who registers it first is the one the next restart promotes. So register
+ *   the account BEFORE naming it here — or name it while sign-ups are closed.
+ *   The docs and the installer prompt both say so, and the "no such account"
+ *   warning below is the moment an operator finds out they are exposed.
  * - **Loud either way.** A missing account logs a warning naming the fix rather
  *   than failing silently, which is the entire failure mode this replaces.
  * - **Never fatal.** A database hiccup here must not stop the API from booting.
@@ -34,6 +40,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { adminAuditLog, users } from '../db/schema.js'
+import { groupPatch } from './user-group.js'
 
 type Logger = {
   info: (obj: object, msg: string) => void
@@ -61,16 +68,21 @@ export async function bootstrapFirstAdmin(log: Logger): Promise<BootstrapOutcome
 
     // Case-insensitive, matching how login resolves a handle
     // (`users_username_lower_unique` guarantees at most one row).
+    //
+    // `groupPatch` rather than a hand-written pair: `role` is derived from
+    // `user_group`, and an account that gets one without the other is exactly
+    // the half-admin this whole module exists to stop people creating.
     const [promoted] = await db
       .update(users)
-      .set({ userGroup: 'creator', role: 'admin' })
+      .set(groupPatch('creator'))
       .where(sql`lower(${users.username}) = ${wanted.toLowerCase()}`)
       .returning({ id: users.id, username: users.username })
 
     if (!promoted) {
       log.warn(
         { ADMIN_BOOTSTRAP_USERNAME: wanted },
-        'admin bootstrap: no such account — register it in the app first, then restart the API (nothing was changed)'
+        'admin bootstrap: no such account — register it in the app first, then restart the API (nothing was changed). ' +
+          'While it stays unregistered on an instance with open sign-ups, whoever claims the handle first is who the next restart would promote.'
       )
       return 'user_not_found'
     }

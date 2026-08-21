@@ -34,6 +34,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { pipeline } from 'node:stream/promises'
+import { Transform } from 'node:stream'
 import type { Readable } from 'node:stream'
 import { fsMediaRoot } from './media-driver.js'
 
@@ -172,14 +173,22 @@ export async function putObject(p: {
     } else {
       const out = createWriteStream(tmp, { mode: 0o600 })
       const limit = p.maxBytes
-      const src = p.body
-      src.on('data', (chunk: Buffer | string) => {
-        written += Buffer.isBuffer(chunk) ? chunk.byteLength : Buffer.byteLength(chunk)
-        if (limit != null && written > limit) {
-          src.destroy(new Error('OBJECT_TOO_LARGE'))
-        }
+      // Count INSIDE the pipeline rather than from a `data` listener on the
+      // source. Both work today, but a listener attached next to a pipe is the
+      // kind of arrangement that starts dropping chunks the moment somebody
+      // moves a line, and the symptom would be a truncated file that still
+      // looks like an object.
+      const meter = new Transform({
+        transform(chunk: Buffer, _enc, cb) {
+          written += chunk.byteLength
+          if (limit != null && written > limit) {
+            cb(new Error('OBJECT_TOO_LARGE'))
+            return
+          }
+          cb(null, chunk)
+        },
       })
-      await pipeline(src, out)
+      await pipeline(p.body, meter, out)
     }
     await fs.rename(tmp, full)
     return written

@@ -32,6 +32,7 @@
  */
 
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import type { Readable } from 'node:stream'
 import {
   ObjectNotFound,
   isValidBucketName,
@@ -198,7 +199,7 @@ export const mediaBlobRoutes: FastifyPluginAsync = async (app) => {
         const written = await putObject({
           bucket: t.bucket,
           key: t.key,
-          body: request.body as NodeJS.ReadableStream as never,
+          body: request.body as Readable,
           maxBytes: maxUploadBytes,
         })
         reply.header('ETag', `"${written}"`)

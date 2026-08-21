@@ -24,18 +24,20 @@ import {
   depositToRendezvous,
   createRendezvous,
   getRendezvousStatus,
+  resolveLinkCode,
 } from '@/lib/api/device-rendezvous'
 
 type Props = { onClose: () => void }
 /**
  * gate     — vault-PIN re-auth.
- * mode     — pick Mode A (scan) or Mode B (show).
+ * mode     — pick a direction.
  * scan     — Mode A: scan the QR the new device shows.
+ * code     — Mode A without a camera: type the code the new device shows.
  * showqr   — Mode B: show a QR, poll until the new device submits its key.
- * verify   — Mode B: compare the verification code, require explicit confirm.
+ * verify   — compare the verification code, require explicit confirm.
  * done     — vault deposited.
  */
-type Phase = 'gate' | 'mode' | 'scan' | 'showqr' | 'verify' | 'done'
+type Phase = 'gate' | 'mode' | 'scan' | 'code' | 'showqr' | 'verify' | 'done'
 
 const POLL_INTERVAL_MS = 2500
 
@@ -71,6 +73,11 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const rendezvousIdRef = useRef<string | null>(null)
   // Mode B: the deposit secret from create() must authorize the later deposit.
   const depositSecretRef = useRef<string | null>(null)
+  // Typed-code path: the code itself authorizes the deposit, so there is no
+  // deposit secret to hold — the two are alternatives, never both.
+  const linkCodeRef = useRef<string | null>(null)
+  const [codeInput, setCodeInput] = useState('')
+  const [codeBusy, setCodeBusy] = useState(false)
   const stopRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Separate interval for the 1-second countdown tick — never reuses timerRef
@@ -147,7 +154,9 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         buildVaultHandoffPayload(user.username, vaultBlob),
         payload.ephemeralPubkey
       )
-      await depositToRendezvous(payload.rendezvousId, encBlob, payload.depositSecret)
+      await depositToRendezvous(payload.rendezvousId, encBlob, {
+        depositSecret: payload.depositSecret,
+      })
       setPhase('done')
     } catch (e) {
       const message = e instanceof Error ? e.message : 'DEVICE_LINK_FAILED'
@@ -170,6 +179,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     pendingPubkeyRef.current = null
     rendezvousIdRef.current = null
     depositSecretRef.current = null
+    linkCodeRef.current = null
     setPhase('showqr')
 
     try {
@@ -227,12 +237,55 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     }
   }, [cleanupPolling, t])
 
-  // -------- Mode B: explicit user confirmation -> encrypt + deposit --------
+  // -------- Mode A without a camera: the user types the code --------
+  //
+  // The verification step is NOT optional here, and that is the whole design.
+  // Scanning a QR is evidence the two screens are in the same room; typing a
+  // code is evidence of nothing — somebody could read one out over the phone.
+  // So this resolves the code to a PUBLIC key, shows the digits derived from
+  // it, and sends nothing until the user confirms both screens agree.
+  const submitCode = useCallback(async () => {
+    const typed = codeInput.trim()
+    if (!typed) return
+    setCodeBusy(true)
+    setErr(null)
+    try {
+      const res = await resolveLinkCode(typed)
+      if (res.status === 'malformed') {
+        setErr(t('settings.linkCodeMalformed'))
+        return
+      }
+      if (res.status === 'not_found') {
+        setErr(t('settings.linkCodeNotFound'))
+        return
+      }
+      if (res.status === 'already_used') {
+        setErr(t('settings.linkCodeUsed'))
+        return
+      }
+      rendezvousIdRef.current = res.rendezvousId
+      pendingPubkeyRef.current = res.ephemeralPubkey
+      depositSecretRef.current = null
+      linkCodeRef.current = typed
+      setVerificationCode(
+        await deriveLinkVerificationCode(res.rendezvousId, res.ephemeralPubkey)
+      )
+      setPhase('verify')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'DEVICE_LINK_FAILED'
+      setErr(explainDeviceLinkError(message, t))
+    } finally {
+      setCodeBusy(false)
+    }
+  }, [codeInput, t])
+
+  // -------- Verify: explicit user confirmation -> encrypt + deposit --------
   const confirmAndDeposit = useCallback(async () => {
     const pubkey = pendingPubkeyRef.current
     const rid = rendezvousIdRef.current
     const depositSecret = depositSecretRef.current
-    if (!pubkey || !rid || !depositSecret || !user?.id) {
+    const linkCode = linkCodeRef.current
+    if (!pubkey || !rid || (!depositSecret && !linkCode) || !user?.id) {
       setErr(explainDeviceLinkError('DEVICE_LINK_FAILED', t))
       return
     }
@@ -246,7 +299,11 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         buildVaultHandoffPayload(user.username, vaultBlob),
         pubkey
       )
-      await depositToRendezvous(rid, encBlob, depositSecret)
+      await depositToRendezvous(
+        rid,
+        encBlob,
+        depositSecret ? { depositSecret } : { code: linkCode as string }
+      )
       cleanupPolling()
       setPhase('done')
     } catch (e) {
@@ -294,7 +351,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const activeStep =
     phase === 'mode'
       ? 0
-      : phase === 'scan' || phase === 'showqr'
+      : phase === 'scan' || phase === 'code' || phase === 'showqr'
         ? 1
         : phase === 'verify'
           ? 2
@@ -447,9 +504,21 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                 <button
                   type="button"
                   onClick={() => {
+                    cleanupPolling()
+                    setErr(null)
+                    setVerificationCode(null)
+                    setPhase('code')
+                  }}
+                  className={tabButtonClass(phase === 'code')}
+                >
+                  {t('settings.linkModeCode')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     if (phase !== 'showqr' && phase !== 'verify') void startShowQr()
                   }}
-                  className={tabButtonClass(phase === 'showqr' || phase === 'verify')}
+                  className={tabButtonClass(phase === 'showqr')}
                 >
                   {t('settings.linkModeShow')}
                 </button>
@@ -503,6 +572,13 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                       isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
                     }`}
                   >
+                    {t('settings.linkModeCode')}: {t('settings.linkCodeHint')}
+                  </p>
+                  <p
+                    className={`break-words text-[9px] leading-relaxed ${
+                      isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
+                    }`}
+                  >
                     {t('settings.linkModeShow')}: {t('settings.linkShowHint')}
                   </p>
                 </div>
@@ -522,6 +598,59 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                     <QrScanner onScan={handleScan} processing={processing} isRetro={isRetro} />
                   </div>
                 </>
+              )}
+
+              {/* Mode A without a camera — type the code the new device shows */}
+              {phase === 'code' && (
+                <div className="mt-4 space-y-3">
+                  <p
+                    className={`break-words text-[9px] leading-relaxed ${
+                      isRetro ? 'p13-classic-copy' : 'text-neon-cyan/80'
+                    }`}
+                  >
+                    {t('settings.linkCodeHint')}
+                  </p>
+                  <input
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !codeBusy) void submitCode()
+                    }}
+                    // autoFocus: this screen exists to receive one short string,
+                    // and a field the user has to find first is a field they
+                    // type the code next to.
+                    autoFocus
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="text"
+                    maxLength={12}
+                    placeholder="XXXX-XXXX"
+                    aria-label={t('settings.linkCodeInputLabel')}
+                    className={`w-full py-3 text-center font-mono text-[22px] tracking-[0.35em] outline-none ${
+                      isRetro
+                        ? 'p13-classic-input'
+                        : isMd3
+                          ? 'rounded-[16px] border border-[color-mix(in_srgb,var(--on-surface)_20%,transparent)] bg-[var(--surface)] text-[var(--on-surface)]'
+                          : 'border border-neon-cyan/40 bg-void text-neon-cyan placeholder:text-neon-cyan/25'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void submitCode()}
+                    disabled={codeBusy || codeInput.trim().length === 0}
+                    className={`${primaryButtonClass} disabled:opacity-40`}
+                  >
+                    {codeBusy ? '[ ... ]' : t('settings.linkCodeSubmit')}
+                  </button>
+                  <p
+                    className={`break-words text-[9px] leading-relaxed ${
+                      isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/70'
+                    }`}
+                  >
+                    {t('settings.linkCodeWhere')}
+                  </p>
+                </div>
               )}
 
               {/* Mode B — show QR, waiting for the new device */}

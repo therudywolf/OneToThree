@@ -376,7 +376,13 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.get('/download-url', { preHandler: requireMedia }, async (request, reply) => {
+  /**
+   * Presigning a GET is an HMAC and a membership check — cheap, and a chat
+   * full of pictures asks for ONE PER ATTACHMENT as it scrolls into view. On
+   * the shared budget that alone could exhaust a minute, so it gets its own,
+   * sized for scrolling rather than for abuse.
+   */
+  app.get('/download-url', { preHandler: requireMedia, config: { rateLimit: { max: 300, timeWindow: '1 minute' } } }, async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

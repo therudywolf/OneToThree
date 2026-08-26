@@ -266,7 +266,25 @@ export async function buildApp() {
   }
 
   await app.register(rateLimit, {
-    max: 100,
+    /**
+     * Budget per minute — SPLIT by whether we know who is asking.
+     *
+     * A flat 100/min throttled ordinary use. Opening the app costs a burst
+     * before the user has done anything: session, chat list, presence, key
+     * inventory, call config, version — and then ONE presign per attachment as
+     * a media-heavy chat scrolls into view. Two of those chats, or a couple of
+     * reloads while testing, and the app starts 429-ing its own owner; that is
+     * exactly what the production logs showed (bursts on /users/me, /chats,
+     * /users/presence, /keys/inventory during a normal session).
+     *
+     * Anonymous traffic keeps the tight budget, because that is the traffic
+     * this limiter exists for. A signed-in session gets room to work: the
+     * account is identified, the security-critical throttles (auth, recovery,
+     * upload presign) are separate route-level budgets that this does not
+     * loosen, and abusing your own account is not the threat model.
+     */
+    max: (_req: FastifyRequest, key: string) =>
+      key.startsWith('user:') ? 400 : 100,
     timeWindow: '1 minute',
     // Counters must survive a deploy. The default LocalStore is per-process, so
     // `docker compose up -d --build api` (and any OOM/`restart: unless-stopped`

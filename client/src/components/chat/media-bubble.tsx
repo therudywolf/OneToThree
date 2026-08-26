@@ -8,6 +8,7 @@ import {
   importAesGcm256RawKey,
 } from '@/lib/crypto'
 import { getDownloadUrl, MediaEvictedError, postRestoreComplete, postRestoreUrl } from '@/lib/api/storage'
+import { safeBlobMime } from '@/lib/safe-blob-mime'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { MediaEvictedPlaceholder } from '@/components/chat/media-evicted-placeholder'
 import { useTranslation } from '@/hooks/use-translation'
@@ -323,7 +324,9 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
       const rawMime = envelope?.mimeType ?? mimeFromPathAndType(mediaPath, mediaType)
       // Strip codec params (e.g. "audio/webm;codecs=opus" → "audio/webm")
       // to avoid browser playback issues with duration detection
-      const mime = rawMime.split(';')[0]
+      // Neutralize an ACTIVE type before it becomes a blob: URL, which
+      // would inherit this origin (see safeBlobMime).
+      const mime = safeBlobMime(rawMime.split(';')[0], envelope?.fileName ?? mediaPath)
       const blob = new Blob([plain], { type: mime })
       await setCachedMedia(message.id, blob, mime)
       cachedBlobRef.current = blob

@@ -8,6 +8,7 @@ import {
 } from '@/lib/crypto'
 import { getDownloadUrl } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
+import { safeBlobMime } from '@/lib/safe-blob-mime'
 import { useTranslation } from '@/hooks/use-translation'
 import type { AlbumEnvelopeV1, AlbumItemV1 } from '@/lib/attachment-envelope'
 
@@ -123,7 +124,7 @@ export function AlbumBubble({ messageId, envelope, sharedKey, onMediaClick }: Pr
             cipher as BufferSource,
           )
         }
-        const mime = item.mimeType.split(';')[0]
+        const mime = safeBlobMime(item.mimeType.split(';')[0], item.fileName)
         const blob = new Blob([plain], { type: mime })
         await setCachedMedia(cacheKey, blob, mime)
         const url = URL.createObjectURL(blob)

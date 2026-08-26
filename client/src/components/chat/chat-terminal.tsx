@@ -19,6 +19,7 @@ import {
 import { decryptBinary, decryptBinaryWithRing, base64ToArrayBuffer, importAesGcm256RawKey } from '@/lib/crypto'
 import { getDownloadUrl } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
+import { safeBlobMime } from '@/lib/safe-blob-mime'
 import { lookupUsers } from '@/lib/api/users'
 import { getChatPrivacy } from '@/lib/chat-privacy'
 import { setNativeFlagSecure } from '@/lib/native-flag-secure'
@@ -1114,7 +1115,7 @@ export function ChatTerminal({
         }
       }
 
-      const mime = envelope?.mimeType ?? item.mimeType
+      const mime = safeBlobMime(envelope?.mimeType ?? item.mimeType, envelope?.fileName)
       const blob = new Blob([plain], { type: mime })
       await setCachedMedia(item.id, blob, mime)
       const url = URL.createObjectURL(blob)

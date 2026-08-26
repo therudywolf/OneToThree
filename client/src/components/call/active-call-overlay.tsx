@@ -50,6 +50,7 @@ import { CallTile } from '@/components/call/call-tile'
 import { CallDebugPanel } from '@/components/call/call-debug-panel'
 import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
 import { CallSettingsPanel } from '@/components/call/call-settings-panel'
+import { CallDuration } from '@/components/call/call-duration'
 import { isDocPipSupported, openDocPipWindow } from '@/lib/call-pip'
 import { toastError, toastSuccess } from '@/store/toastStore'
 
@@ -89,13 +90,6 @@ type Props = {
   onSetQuality: (level: QualityLevel) => void
   /** Switch the camera background effect (none/blur/image) live. */
   onSetCameraEffect?: (kind: CameraEffectPref) => void
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
 }
 
 function getQualityDotColor(quality: { rtt: number | null; outgoingBitrate: number | null; poor: boolean } | null): 'green' | 'yellow' | 'red' {
@@ -239,7 +233,6 @@ export function ActiveCallOverlay({
   const localMediaRev = useCallStore((s) => s.localMediaRev)
 
   const [tick, setTick] = useState(0)
-  const [elapsed, setElapsed] = useState(0)
   const [screenShareAllowed, setScreenShareAllowed] = useState(true)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [isNarrow, setIsNarrow] = useState(false)
@@ -443,17 +436,6 @@ export function ActiveCallOverlay({
     },
     [remoteNames, peerName, t]
   )
-
-  useEffect(() => {
-    if (!isCalling || !localStream || !callStartTime) {
-      setElapsed(0)
-      return
-    }
-    const id = window.setInterval(() => {
-      setElapsed(Date.now() - callStartTime)
-    }, 500)
-    return () => window.clearInterval(id)
-  }, [isCalling, localStream, callStartTime])
 
   // Auto-spotlight a remote that STARTS screen sharing (unless the user pinned
   // something themselves). Watches both the new dedicated screen ENTRIES and
@@ -820,7 +802,7 @@ export function ActiveCallOverlay({
               </span>
             )}
             <p className="text-xs tracking-wider text-neon-cyan/70">
-              [{formatDuration(elapsed)}]
+              [<CallDuration startedAt={isCalling && localStream ? callStartTime : null} />]
             </p>
             {isDocPipSupported() ? (
               <button

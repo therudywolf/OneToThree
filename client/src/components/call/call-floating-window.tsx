@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { CallDuration } from '@/components/call/call-duration'
 import { Mic, MicOff, PhoneOff, Maximize2 } from 'lucide-react'
 import { useThemeStore } from '@/store/themeStore'
 import { useTranslation } from '@/hooks/use-translation'
@@ -41,7 +42,7 @@ function clampPos(x: number, y: number, w: number, h: number): { x: number; y: n
 export function FloatingCallWindow({
   stream,
   title,
-  elapsedMs,
+  startedAt,
   micMuted,
   onExpand,
   onToggleMute,
@@ -50,7 +51,8 @@ export function FloatingCallWindow({
   /** Remote stream to preview (video if present, speaking ring off its audio). */
   stream: MediaStream | null
   title: string
-  elapsedMs: number
+  /** Epoch ms the call began — the clock ticks inside <CallDuration>. */
+  startedAt: number | null
   micMuted: boolean
   onExpand: () => void
   onToggleMute: () => void
@@ -127,10 +129,6 @@ export function FloatingCallWindow({
     window.addEventListener('pointerup', onUp)
   }, [onExpand])
 
-  const mins = Math.floor(elapsedMs / 60000)
-  const secs = Math.floor((elapsedMs % 60000) / 1000)
-  const timer = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-
   return (
     <div
       ref={rootRef}
@@ -183,7 +181,7 @@ export function FloatingCallWindow({
             {title}
           </p>
           <p className={`text-[9px] ${isMd3 ? 'text-[var(--on-surface-variant)]' : 'font-mono tracking-wider text-neon-cyan/70'}`}>
-            {timer}
+            <CallDuration startedAt={startedAt} />
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">

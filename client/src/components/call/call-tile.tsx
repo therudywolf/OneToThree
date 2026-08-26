@@ -40,6 +40,7 @@ export function CallTile({
   pinned = false,
   onPinToggle,
   speakingEnabled = true,
+  externalSpeaking,
   fillHeight = true,
   showPin = true,
   mediaRev = 0,
@@ -57,6 +58,16 @@ export function CallTile({
   pinned?: boolean
   onPinToggle?: () => void
   speakingEnabled?: boolean
+  /**
+   * Who is speaking, when the transport already knows.
+   *
+   * The built-in detector wires an AnalyserNode and a 100ms interval PER TILE.
+   * That is the right answer for mesh WebRTC, where nothing else is watching —
+   * and the wrong one behind an SFU, which reports active speakers itself: a
+   * ten-person room paid for ten analysers and ten timers to recompute what
+   * had already arrived over the wire. Pass this and no analyser is built.
+   */
+  externalSpeaking?: boolean
   /** false → tile keeps a 16:9 aspect instead of filling the parent. */
   fillHeight?: boolean
   showPin?: boolean
@@ -74,7 +85,8 @@ export function CallTile({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const { active: videoActive } = useVideoTrack(stream, mediaRev)
-  const speaking = useSpeaking(stream, speakingEnabled && !micMuted)
+  const detected = useSpeaking(stream, externalSpeaking === undefined && speakingEnabled && !micMuted)
+  const speaking = externalSpeaking === undefined ? detected : externalSpeaking && !micMuted
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [pipActive, setPipActive] = useState(false)
   // Screen shares default to "fit" (contain) — cropping a desktop is useless;

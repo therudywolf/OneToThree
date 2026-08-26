@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useTranslation } from '@/hooks/use-translation'
 import { FloatingCallWindow } from '@/components/call/call-floating-window'
@@ -25,13 +24,6 @@ export function GroupCallMiniPlayer({ onExpand, onEndCall, onToggleMute }: Props
   const localStream = useGroupCallStore((s) => s.localStream)
   const callStartTime = useGroupCallStore((s) => s.callStartTime)
 
-  const [elapsed, setElapsed] = useState(0)
-
-  useEffect(() => {
-    if (!callStartTime) { setElapsed(0); return }
-    const id = window.setInterval(() => setElapsed(Date.now() - callStartTime), 500)
-    return () => window.clearInterval(id)
-  }, [callStartTime])
 
   if (!isInGroupCall || !isMiniPlayer) return null
 
@@ -49,7 +41,7 @@ export function GroupCallMiniPlayer({ onExpand, onEndCall, onToggleMute }: Props
     <FloatingCallWindow
       stream={previewStream}
       title={`${t('groupCall.title')} · ${totalCount}`}
-      elapsedMs={elapsed}
+      startedAt={callStartTime}
       micMuted={audioMuted}
       onExpand={onExpand}
       onToggleMute={onToggleMute}

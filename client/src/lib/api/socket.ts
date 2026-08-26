@@ -176,6 +176,11 @@ export type WsInboundMessage =
       user_id: string
     }
   | {
+      /** An admin removed US from the call. Only ever sent to the target. */
+      type: 'group_call:kicked'
+      room_id: string
+    }
+  | {
       type: 'group_call:offer'
       room_id: string
       from_user_id: string

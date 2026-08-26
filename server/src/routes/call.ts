@@ -36,6 +36,8 @@ import {
   removeLivekitParticipant,
 } from '../lib/livekit-admin.js'
 import { drainGuestCallLog, recordGuestLeft } from '../lib/guest-call-log.js'
+import { leaveRoom } from '../ws/group-call-rooms.js'
+import { broadcastToUsers, sendToUser } from '../ws/registry.js'
 import { takeSeatHolder } from '../lib/guest-knock-store.js'
 
 const tokenBodySchema = z.object({
@@ -46,6 +48,13 @@ const tokenBodySchema = z.object({
     .regex(/^[A-Za-z0-9_\-:.]+$/),
   can_publish: z.boolean().optional().default(true),
   can_subscribe: z.boolean().optional().default(true),
+})
+
+/** Remove a member from a running call — see POST /call/kick. */
+const kickMemberSchema = z.object({
+  /** The room, which for a member kick is always a chat id. */
+  room: z.string().uuid(),
+  user_id: z.string().uuid(),
 })
 
 function b64url(input: Buffer | string): string {
@@ -235,6 +244,68 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       mesh_fallback_enabled: mediaMode === 'self_hosted',
       group_relay_enabled: mediaMode === 'origin_safe',
     })
+  })
+
+  /**
+   * POST /call/kick — remove a MEMBER from a running call (#1).
+   *
+   * The call screens could remove a link guest and nothing else. In a group
+   * call that left the person who owns the chat with no way to end someone's
+   * participation short of ending the whole call — the one moderation action a
+   * call actually needs, and the only one that was missing.
+   *
+   * Authority is the chat's, not the call's: admins and owners of the chat this
+   * room belongs to. A standalone guest room is not a chat and has no members,
+   * so it has no member to remove — those go through /guest-calls/kick.
+   *
+   * Removing is not banning: the target may walk back in. That is deliberate —
+   * "you are talking over everyone, sit this one out" is the case this serves,
+   * and a durable ban belongs to chat membership, which already has one.
+   */
+  app.post('/call/kick', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const u = await getAuthUser(req, reply)
+    if (!assertAuthed(reply, u)) return
+    if (u.group === 'guest') return reply.status(403).send({ error: 'GUEST_FORBIDDEN' })
+
+    const parsed = kickMemberSchema.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    const { room, user_id: targetId } = parsed.data
+    if (targetId === u.id) return reply.status(400).send({ error: 'CANNOT_KICK_SELF' })
+
+    const [me] = await db
+      .select({ role: chatMembers.role })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, room), eq(chatMembers.userId, u.id)))
+      .limit(1)
+    if (!me || (me.role !== 'admin' && me.role !== 'owner')) {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
+
+    const [target] = await db
+      .select({ role: chatMembers.role })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, room), eq(chatMembers.userId, targetId)))
+      .limit(1)
+    if (!target) return reply.status(404).send({ error: 'NOT_A_MEMBER' })
+    // An owner is not removable from their own chat's call — not by an admin,
+    // and not by a co-owner either. Mirrors the role rules on chat membership.
+    if (target.role === 'owner') return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    // SFU path: the LiveKit identity IS the user id (see the token's subject
+    // above). Best-effort — a mesh or relay call has no LiveKit room at all,
+    // and the signal below is what ends participation there.
+    const removed = await removeLivekitParticipant(room, targetId).catch(() => false)
+    // Every transport: drop them from the room roster and tell them to leave.
+    // Without the roster write a mesh peer stays "in" the room for everyone who
+    // joins next, and the tile comes back on its own.
+    const remaining = await leaveRoom(room, targetId)
+    sendToUser(targetId, { type: 'group_call:kicked', room_id: room })
+    broadcastToUsers(
+      remaining.map((p) => p.userId),
+      { type: 'group_call:member_leave', room_id: room, user_id: targetId }
+    )
+    req.log.info({ room, targetId, byUserId: u.id, removed }, 'call: member removed')
+    return reply.send({ ok: true, removed })
   })
 
   /**

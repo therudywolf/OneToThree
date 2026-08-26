@@ -108,4 +108,89 @@ describe('call token route', () => {
       await db.delete(users).where(eq(users.id, outsider.id))
     }
   })
+
+  /**
+   * Removing a member from a running call (#1). The call screens could remove a
+   * link guest and nothing else, so an owner watching someone talk over the
+   * room had no action short of ending the call for everyone.
+   *
+   * What is pinned here is the authority, which is the CHAT's and not the
+   * call's: who may, who may not, and who is out of reach entirely.
+   */
+  it('lets chat admins remove a member from a call, and nobody else', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`kick-owner-${stamp}`)
+    const admin = await createUser(`kick-admin-${stamp}`)
+    const plain = await createUser(`kick-plain-${stamp}`)
+    const outsider = await createUser(`kick-out-${stamp}`)
+    const [chat] = await db
+      .insert(chats)
+      .values({ type: 'group_e2e', name: null })
+      .returning({ id: chats.id })
+
+    const cookieFor = async (u: { id: string; username: string }) =>
+      `fm_session=${await app!.jwt.sign({ sub: u.id, username: u.username, jti: randomUUID() })}`
+
+    try {
+      await db.insert(chatMembers).values([
+        { chatId: chat.id, userId: owner.id, encryptedGroupKey: null, role: 'owner' as const },
+        { chatId: chat.id, userId: admin.id, encryptedGroupKey: null, role: 'admin' as const },
+        { chatId: chat.id, userId: plain.id, encryptedGroupKey: null, role: 'member' as const },
+      ])
+
+      // An ordinary member has no say over anyone.
+      const byMember = await request(app!.server)
+        .post('/api/call/kick')
+        .set('Cookie', await cookieFor(plain))
+        .send({ room: chat.id, user_id: admin.id })
+        .expect(403)
+      expect(byMember.body.error).toBe('FORBIDDEN')
+
+      // Neither does someone who is not in the chat at all.
+      await request(app!.server)
+        .post('/api/call/kick')
+        .set('Cookie', await cookieFor(outsider))
+        .send({ room: chat.id, user_id: plain.id })
+        .expect(403)
+
+      // The owner is out of reach — an admin does not outrank them.
+      const atOwner = await request(app!.server)
+        .post('/api/call/kick')
+        .set('Cookie', await cookieFor(admin))
+        .send({ room: chat.id, user_id: owner.id })
+        .expect(403)
+      expect(atOwner.body.error).toBe('FORBIDDEN')
+
+      // "Remove yourself" is Leave, and saying so beats a confusing success.
+      const atSelf = await request(app!.server)
+        .post('/api/call/kick')
+        .set('Cookie', await cookieFor(admin))
+        .send({ room: chat.id, user_id: admin.id })
+        .expect(400)
+      expect(atSelf.body.error).toBe('CANNOT_KICK_SELF')
+
+      // Someone who is not a member of the chat cannot be removed FROM it.
+      const atOutsider = await request(app!.server)
+        .post('/api/call/kick')
+        .set('Cookie', await cookieFor(owner))
+        .send({ room: chat.id, user_id: outsider.id })
+        .expect(404)
+      expect(atOutsider.body.error).toBe('NOT_A_MEMBER')
+
+      // And the case it exists for.
+      const ok = await request(app!.server)
+        .post('/api/call/kick')
+        .set('Cookie', await cookieFor(admin))
+        .send({ room: chat.id, user_id: plain.id })
+        .expect(200)
+      expect(ok.body.ok).toBe(true)
+    } finally {
+      await db.delete(chatMembers).where(eq(chatMembers.chatId, chat.id))
+      await db.delete(chats).where(eq(chats.id, chat.id))
+      for (const u of [owner, admin, plain, outsider]) {
+        await db.delete(users).where(eq(users.id, u.id))
+      }
+    }
+  })
 })

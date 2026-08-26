@@ -59,3 +59,25 @@ export async function createCallToken(room: string): Promise<CallTokenResponse> 
     call_e2ee_key: typeof data.call_e2ee_key === 'string' ? data.call_e2ee_key : undefined,
   }
 }
+
+/**
+ * Remove a MEMBER from a running call (#1). Distinct from
+ * `kickGuestFromCall`: a link guest has no chat membership to reason about, so
+ * the two go through different endpoints with different authority rules.
+ *
+ * Authority is the server's — chat admins and owners — and a refusal comes back
+ * as `FORBIDDEN` so the UI can say "not allowed" rather than "try again".
+ */
+export async function removeCallParticipant(
+  room: string,
+  userId: string
+): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/call/kick`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room, user_id: userId }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'CALL_KICK_FAILED')
+}

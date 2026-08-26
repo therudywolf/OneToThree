@@ -775,7 +775,12 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
+          /* No `accept`: this list was the SECOND gate on sending a source file
+             or an HTML page — the picker greyed them out before the server ever
+             saw them, and a whitelist here has to be kept in lockstep with
+             `ALLOWED_EXTENSIONS` in server/src/routes/storage.ts or it silently
+             diverges again. The server is the authority; a rejected type comes
+             back as a named error the composer shows. */
           onChange={handleFileSelect}
           className="hidden"
           aria-label={t('chat.attachFile')}

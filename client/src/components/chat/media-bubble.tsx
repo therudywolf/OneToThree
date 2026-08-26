@@ -362,7 +362,10 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
         fileType: effectiveMime,
         fileSize: payload.byteLength,
       })
-      await putRestoredMedia(restore.uploadUrl, effectiveMime, payload)
+      // SigV4 signs the Content-Type, and the server may have neutralized it
+      // (source/markup files are stored as opaque bytes) — send back what it
+      // actually signed, not what the envelope says the file is.
+      await putRestoredMedia(restore.uploadUrl, restore.contentType ?? effectiveMime, payload)
       await postRestoreComplete({
         filePath: mediaPath,
         fileType: effectiveMime,

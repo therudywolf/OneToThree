@@ -17,7 +17,7 @@
  * id with whatever the socket already delivered.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DoorOpen } from 'lucide-react'
 import { getFmSocket } from '@/lib/api/socket'
 import {
@@ -34,6 +34,9 @@ export type KnockCard = {
   id: string
   nickname: string
   chatId: string | null
+  /** The room the grant admits into — `chat_id` when there is one, else the
+   *  standalone meeting room. Always set by the server. */
+  roomId: string | null
   expiresAt: number
   busy: boolean
   error: string | null
@@ -72,6 +75,7 @@ export function mergeKnockCards(
       id: p.knock_id,
       nickname: p.nickname,
       chatId: p.chat_id ?? null,
+      roomId: p.room_id ?? p.chat_id ?? null,
       expiresAt: knockExpiry(p.expires_at, now),
       busy: false,
       error: null,
@@ -92,7 +96,20 @@ function knockExpiry(expiresAt: string | null | undefined, now: number): number 
   return Number.isNaN(at) ? now + KNOCK_TTL_MS : at
 }
 
-export function GuestKnockOverlay() {
+type Props = {
+  /**
+   * Put this host into the room the guest is about to be let into, if they are
+   * not there already (#5).
+   *
+   * A guest is always admitted into the SFU room named after the chat, but a
+   * 1:1 call is peer-to-peer — so "admit" used to drop the guest into an empty
+   * room while the two hosts kept talking on a link the guest was not on. This
+   * runs BEFORE the approval, so the room is never empty when the grant lands.
+   */
+  onAdmit?: (roomId: string | null) => Promise<void>
+}
+
+export function GuestKnockOverlay({ onAdmit }: Props = {}) {
   const { t } = useTranslation()
   const [knocks, setKnocks] = useState<KnockCard[]>([])
   const soundEnabled = useChatStore((s) => s.chatSoundEnabled)
@@ -101,10 +118,16 @@ export function GuestKnockOverlay() {
     setKnocks((prev) => prev.filter((k) => k.id !== id))
   }, [])
 
+  // Read-only mirror of the cards, so `act` can look one up without taking
+  // `knocks` as a dependency — it is called from a render-stable handler and
+  // re-creating it on every card change would re-arm the expiry timers.
+  const knocksRef = useRef<KnockCard[]>([])
+  knocksRef.current = knocks
+
   useEffect(() => {
     const unsubscribe = getFmSocket().subscribe((m) => {
       if (m.type === 'guest_knock') {
-        const { knock_id: id, nickname, chat_id: chatId } = m
+        const { knock_id: id, nickname, chat_id: chatId, room_id: roomId } = m
         setKnocks((prev) => {
           if (prev.some((k) => k.id === id)) return prev
           // A knock is a person waiting behind a door with a five-minute
@@ -120,6 +143,7 @@ export function GuestKnockOverlay() {
               id,
               nickname,
               chatId: chatId ?? null,
+              roomId: roomId ?? chatId ?? null,
               expiresAt: Date.now() + KNOCK_TTL_MS,
               busy: false,
               error: null,
@@ -184,12 +208,22 @@ export function GuestKnockOverlay() {
 
   const act = useCallback(
     async (id: string, action: 'approve' | 'deny') => {
+      const card = knocksRef.current.find((k) => k.id === id) ?? null
       setKnocks((prev) =>
         prev.map((k) => (k.id === id ? { ...k, busy: true, error: null } : k))
       )
       try {
-        if (action === 'approve') await approveGuestKnock(id)
-        else await denyGuestKnock(id)
+        if (action === 'approve') {
+          // Best-effort, and deliberately not fatal: a guest kept waiting
+          // because the host's own call could not be migrated is strictly worse
+          // than a guest who lands in a room the host then has to join by hand.
+          try {
+            await onAdmit?.(card?.roomId ?? card?.chatId ?? null)
+          } catch (err) {
+            console.warn('[guest] could not move the call into the room', err)
+          }
+          await approveGuestKnock(id)
+        } else await denyGuestKnock(id)
         removeKnock(id)
       } catch (err) {
         setKnocks((prev) =>
@@ -205,7 +239,7 @@ export function GuestKnockOverlay() {
         )
       }
     },
-    [removeKnock]
+    [removeKnock, onAdmit]
   )
 
   if (knocks.length === 0) return null

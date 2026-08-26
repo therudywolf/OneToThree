@@ -439,6 +439,7 @@ export function ChatApp({
     setQuality,
     setCameraEffect,
     promoteToGroup,
+    openCallToGuests,
   } = useWebRTC(userId)
 
   useNotificationOpen(acceptIncomingCall)
@@ -452,6 +453,34 @@ export function ChatApp({
     toggleVideo: toggleGroupVideo,
     toggleScreenShare: toggleGroupScreenShare,
   } = useGroupCall(userId)
+
+  /**
+   * A guest was just approved for `roomId` — make sure this host is actually in
+   * that room before the grant is minted (#5).
+   *
+   * Three ways to already be wrong, and the guest sees the same empty room in
+   * all of them:
+   *  - in a 1:1 call for this chat  → peer-to-peer, nobody is in the SFU room;
+   *    migrate both of us into it (openCallToGuests).
+   *  - in no call at all            → pressing «впустить» IS the intent to meet;
+   *    join the room, so admitting from the chat list works.
+   *  - already in a group call      → nothing to do; if it is this room the
+   *    guest is about to join us, and if it is another one, yanking the host
+   *    out of it would be a worse surprise than a guest waiting a moment.
+   */
+  const admitGuestIntoRoom = useCallback(
+    async (roomId: string | null) => {
+      if (!roomId) return
+      if (useGroupCallStore.getState().isInGroupCall) return
+      const call = useCallStore.getState()
+      if (call.isCalling) {
+        if (call.callChatId === roomId) await openCallToGuests(roomId)
+        return
+      }
+      await startGroupCall(roomId, false)
+    },
+    [openCallToGuests, startGroupCall]
+  )
 
   const groupCallIsMiniPlayer = useGroupCallStore((s) => s.isMiniPlayer)
 
@@ -1024,6 +1053,7 @@ export function ChatApp({
         peerName={peerIdentity?.username ?? undefined}
         promoteCandidateIds={promoteCandidateIds}
         onPromote={promoteToGroup}
+        onOpenToGuests={capabilities.guests ? openCallToGuests : undefined}
       />
       <CallMiniPlayer
         onExpand={() => useCallStore.getState().setMiniPlayer(false)}
@@ -1110,7 +1140,7 @@ export function ChatApp({
           onClose={() => setSettingsOpen(false)}
         />
       ) : null}
-      {capabilities.guests ? <GuestKnockOverlay /> : null}
+      {capabilities.guests ? <GuestKnockOverlay onAdmit={admitGuestIntoRoom} /> : null}
       {capabilities.guests && guestLinksOpen ? (
         <GuestLinksModal
           activeChatId={activeChatId}

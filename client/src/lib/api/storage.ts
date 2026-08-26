@@ -5,6 +5,14 @@ export type UploadUrlResponse = {
   uploadUrl: string
   filePath: string
   bucket: string
+  /**
+   * The Content-Type the presigned PUT was signed with. NOT always the type we
+   * asked for: the server stores source and markup files as opaque bytes so
+   * they can never be served as an active document. SigV4 covers this header,
+   * so the PUT must carry exactly this value. Absent on older servers — fall
+   * back to the declared type there.
+   */
+  contentType?: string
 }
 
 export async function postUploadUrl(body: {

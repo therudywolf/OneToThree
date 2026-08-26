@@ -30,11 +30,14 @@ export function CallParticipantsPanel({
   rows,
   onClose,
   onKickGuest,
+  onRemoveMember,
 }: {
   rows: ParticipantRow[]
   onClose: () => void
   /** Remove a link-invited guest from the room (host/admin action). */
   onKickGuest?: (userId: string, label: string) => void
+  /** Remove a MEMBER from the call. Absent when the caller has no authority. */
+  onRemoveMember?: (userId: string, label: string) => void
 }) {
   const { t } = useTranslation()
   const peerVolumes = useCallStore((s) => s.peerVolumes)
@@ -114,6 +117,22 @@ export function CallParticipantsPanel({
                       className="flex h-7 w-7 items-center justify-center text-text-muted transition-colors hover:text-neon-red"
                       title={t('guest.kick')}
                       aria-label={t('guest.kick')}
+                    >
+                      <UserMinus className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
+                  {/* Removing a MEMBER — offered only where the caller has the
+                      authority for it (the server re-checks, and says so). A
+                      link guest keeps the guest-specific action above; the two
+                      go through different endpoints because a guest has no
+                      chat membership to reason about. */}
+                  {!row.isGuest && !row.isLocal && onRemoveMember ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveMember(row.userId, row.label)}
+                      className="flex h-7 w-7 items-center justify-center text-text-muted transition-colors hover:text-neon-red"
+                      title={t('call.removeFromCall')}
+                      aria-label={t('call.removeFromCall')}
                     >
                       <UserMinus className="h-3.5 w-3.5" />
                     </button>

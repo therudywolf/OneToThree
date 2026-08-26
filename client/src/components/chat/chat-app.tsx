@@ -483,6 +483,22 @@ export function ChatApp({
   )
 
   const groupCallIsMiniPlayer = useGroupCallStore((s) => s.isMiniPlayer)
+  const groupCallRoomId = useGroupCallStore((s) => s.roomId)
+
+  /**
+   * May this user remove someone from the running group call (#1)?
+   *
+   * The call room IS the chat id, so the answer is the role we already hold in
+   * that chat. A standalone meeting room matches no chat and gets `false` — its
+   * only removable people are link guests, which is a separate action with its
+   * own authority rules. The server re-checks either way; this decides whether
+   * to draw the control.
+   */
+  const groupCallCanModerate = useMemo(() => {
+    if (!groupCallRoomId) return false
+    const chat = chats.find((c) => c.id === groupCallRoomId)
+    return chat?.my_role === 'owner' || chat?.my_role === 'admin'
+  }, [chats, groupCallRoomId])
 
   const callLocalStream = useCallStore((s) => s.localStream)
   const callIsVideo = (callLocalStream?.getVideoTracks().length ?? 0) > 0
@@ -1069,6 +1085,7 @@ export function ChatApp({
           onToggleMute={toggleGroupMute}
           onToggleVideo={toggleGroupVideo}
           onToggleScreenShare={toggleGroupScreenShare}
+          canModerate={groupCallCanModerate}
         />
       )}
       {isInGroupCall && groupCallIsMiniPlayer && (

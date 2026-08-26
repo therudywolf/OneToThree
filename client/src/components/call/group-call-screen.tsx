@@ -55,6 +55,12 @@ type Props = {
   onToggleVideo: () => Promise<boolean>
   /** Toggle screen-share; returns the resulting screen-sharing state. */
   onToggleScreenShare: () => Promise<boolean>
+  /**
+   * This user is an admin/owner of the chat this room belongs to, so the
+   * participants panel offers removing a member (#1). The server re-checks —
+   * this only decides whether to show the control at all.
+   */
+  canModerate?: boolean
 }
 
 function getGridClass(count: number): string {
@@ -81,6 +87,7 @@ export function GroupCallScreen({
   onToggleMute,
   onToggleVideo,
   onToggleScreenShare,
+  canModerate = false,
 }: Props) {
   const { t } = useTranslation()
   const capabilities = useCapabilities()
@@ -228,6 +235,31 @@ export function GroupCallScreen({
       setInviteBusy(false)
     }
   }, [roomId, inviteBusy, t])
+
+  /**
+   * Remove a member from the call — the moderation action the call screens
+   * never had (#1). Offered only to an admin/owner of the chat this room
+   * belongs to; the server re-checks, and a 403 is reported as "not allowed"
+   * rather than "try again", because the client cannot know the target's role.
+   */
+  const handleRemoveMember = useCallback(
+    async (targetUserId: string, label: string) => {
+      if (!roomId) return
+      if (!window.confirm(t('call.removeFromCallConfirm').replace('{name}', label))) return
+      try {
+        const { removeCallParticipant } = await import('@/lib/api/call')
+        await removeCallParticipant(roomId, targetUserId)
+      } catch (err) {
+        const code = err instanceof Error ? err.message : ''
+        toastError(
+          code === 'FORBIDDEN'
+            ? t('call.removeFromCallForbidden')
+            : t('call.removeFromCallFailed')
+        )
+      }
+    },
+    [roomId, t]
+  )
 
   /**
    * Remove a link-invited guest from the room. Authorization is the server's
@@ -511,6 +543,7 @@ export function GroupCallScreen({
                   rows={participantRows}
                   onClose={() => setShowParticipantPanel(false)}
                   onKickGuest={handleKickGuest}
+                  onRemoveMember={canModerate ? handleRemoveMember : undefined}
                 />
               )}
             </aside>

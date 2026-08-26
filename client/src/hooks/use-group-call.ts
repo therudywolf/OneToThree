@@ -24,6 +24,8 @@ import {
   isGroupCallScreenSharing,
   isGroupCallCameraOn,
 } from '@/lib/group-call-manager'
+import { toastWarn } from '@/store/toastStore'
+import { useTranslation } from '@/hooks/use-translation'
 
 /**
  * PROJECT 13 :: GROUP_CALL_HOOK
@@ -32,6 +34,7 @@ import {
  * Subscribes to WebSocket group call events and provides call control actions.
  */
 export function useGroupCall(userId: string | null) {
+  const { t } = useTranslation()
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
   const roomId = useGroupCallStore((s) => s.roomId)
   const localStream = useGroupCallStore((s) => s.localStream)
@@ -109,12 +112,23 @@ export function useGroupCall(userId: string | null) {
             .setActiveCallBanner(msg.room_id, msg.participant_count)
           break
 
+        case 'group_call:kicked':
+          // Only ever addressed to us. Leave for real — the server already took
+          // us off the roster and out of the SFU room, so staying on this
+          // screen would mean sitting in a call nobody can hear us in, with
+          // tiles frozen at the moment we were removed.
+          if (useGroupCallStore.getState().roomId === msg.room_id) {
+            leaveGroupCall()
+            toastWarn(t('call.removedByHostBody'), { title: t('call.removedByHost') })
+          }
+          break
+
         case 'group_call:ended':
           useGroupCallStore.getState().clearActiveCallBanner(msg.room_id)
           break
       }
     })
-  }, [userId])
+  }, [userId, t])
 
   const startCall = useCallback(
     async (targetRoomId: string, withVideo: boolean) => {

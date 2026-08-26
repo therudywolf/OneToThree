@@ -23,7 +23,6 @@
  */
 
 import {
-  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -32,7 +31,6 @@ import {
 import type {
   RemoteParticipant,
   RemoteTrack,
-  RemoteTrackPublication,
   Room,
   RoomOptions,
 } from 'livekit-client'
@@ -65,6 +63,8 @@ import { acquireMedia } from '@/lib/media-capture'
 import { upgradeLocalStreamAudio, type VoiceProcessingHandle } from '@/lib/voice-processing'
 import { createEffectedCameraTrack, type CameraEffectsHandle } from '@/lib/camera-effects'
 import { MediaDeviceSettings } from '@/components/media/media-device-settings'
+import { CallTile } from '@/components/call/call-tile'
+import { MeetParticipantsPanel, type MeetParticipantRow } from '@/components/guest/meet-participants-panel'
 import { tracksAffectedBy, type MediaPrefKind } from '@/lib/media-device-list'
 
 // ─── Lazy livekit-client module (kept out of the main bundle) ───────────────
@@ -147,8 +147,16 @@ function LeaveIcon() {
 
 // ─── Remote media sinks ─────────────────────────────────────────────────────
 
-function AudioSink({ track }: { track: RemoteTrack }) {
+function AudioSink({ track, volume = 1 }: { track: RemoteTrack; volume?: number }) {
   const ref = useRef<HTMLAudioElement | null>(null)
+  // Per-person volume and mute-for-me, applied to the element rather than
+  // signalled: the person you turn down never learns that you did, which is
+  // the whole point of the control. Kept in its own effect so changing a
+  // slider does not detach and re-attach the track.
+  useEffect(() => {
+    const el = ref.current
+    if (el) el.volume = Math.max(0, Math.min(1, volume))
+  }, [volume])
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -167,115 +175,49 @@ function AudioSink({ track }: { track: RemoteTrack }) {
   return <audio ref={ref} autoPlay />
 }
 
-function ParticipantTile({
-  participant,
-  variant = 'camera',
-  onKick,
-}: {
-  participant: RemoteParticipant
-  /** Which of the participant's video sources this tile shows. */
-  variant?: 'camera' | 'screen'
-  /** Present only for a host who may remove guests. */
-  onKick?: (identity: string, name: string) => void
-}) {
-  const { t } = useTranslation()
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const lk = lkModule
+/** Identity used for the local participant's own rows — never a real one. */
+const LOCAL_KEY = '@self'
 
-  // One tile per VIDEO SOURCE, not one per participant. A screen share used to
-  // simply win the slot, so someone presenting with their camera on vanished
-  // from the room they were presenting to — and the app's own call screens have
-  // shown the two side by side since dual capture landed.
-  let cameraPub: RemoteTrackPublication | undefined
-  let screenPub: RemoteTrackPublication | undefined
-  for (const pub of participant.videoTrackPublications.values()) {
-    if (!pub.track) continue
-    if (lk && pub.source === lk.Track.Source.ScreenShare) screenPub ??= pub
-    else cameraPub ??= pub
-  }
-  const videoPub = variant === 'screen' ? screenPub : cameraPub
-  // Audio belongs to the participant, not to a tile: rendering the sinks under
-  // both tiles would play every remote voice twice.
-  const audioTracks: { sid: string; track: RemoteTrack }[] = []
-  if (variant !== 'screen') {
-    for (const pub of participant.audioTrackPublications.values()) {
-      if (pub.track) audioTracks.push({ sid: pub.trackSid, track: pub.track })
-    }
-  }
+/** One tile = one video source, so a presenter with their camera on gets two. */
+type StageTile = {
+  key: string
+  identity: string
+  label: string
+  stream: MediaStream | null
+  isLocal: boolean
+  isScreen: boolean
+  isGuest: boolean
+  micMuted: boolean
+  camOff: boolean
+  speaking: boolean
+}
 
-  const videoTrack = videoPub?.track
-  useEffect(() => {
-    const el = videoRef.current
-    if (!el || !videoTrack) return
-    videoTrack.attach(el)
-    return () => {
-      videoTrack.detach(el)
-    }
-  }, [videoTrack])
-
-  const isScreen = variant === 'screen'
-  const name = displayName(participant)
-  const guest = isGuestParticipant(participant.metadata)
-  const micOff = !participant.isMicrophoneEnabled
-
-  if (isScreen && !videoTrack) return null
-
+/**
+ * What the spotlight falls on when nobody has pinned anything: a shared screen
+ * first (it is the thing being shown), then whoever is speaking, then the first
+ * remote camera. Falls back to our own tile in a room of one.
+ */
+function autoSpotlightKey(tiles: StageTile[]): string | undefined {
   return (
-    <div
-      className={`relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border ${
-        isScreen
-          ? 'border-neon-cyan/50 bg-void'
-          : participant.isSpeaking
-            ? 'border-success bg-surface-elevated'
-            : 'border-border-strong bg-surface-elevated'
-      }`}
-    >
-      {videoTrack ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className="h-full w-full object-contain"
-        />
-      ) : (
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-2xl font-semibold text-text-primary">
-          {name.slice(0, 1).toUpperCase()}
-        </div>
-      )}
-      {audioTracks.map(({ sid, track }) => (
-        <AudioSink key={sid} track={track} />
-      ))}
-      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-void/70 px-2 py-1 text-xs">
-        <span className="max-w-[10rem] truncate">{name}</span>
-        {isScreen ? (
-          <span className="text-neon-cyan">{t('call.screenSharing')}</span>
-        ) : null}
-        {guest ? (
-          <span className="rounded bg-neon-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-neon-amber">
-            {t('guest.badge')}
-          </span>
-        ) : null}
-        {micOff && !isScreen ? (
-          <span className="text-text-muted">
-            <MicIcon off />
-          </span>
-        ) : null}
-      </div>
-      {guest && onKick && !isScreen ? (
-        <button
-          type="button"
-          onClick={() => onKick(participant.identity, name)}
-          title={t('meet.kickGuestTitle').replace('{name}', name)}
-          className="absolute right-2 top-2 rounded-md bg-void/70 px-2 py-1 text-xs text-text-primary transition hover:bg-neon-red hover:text-text-primary"
-        >
-          {t('meet.kickGuestAction')}
-        </button>
-      ) : null}
-    </div>
+    tiles.find((tile) => tile.isScreen)?.key ??
+    tiles.find((tile) => tile.speaking && !tile.isLocal)?.key ??
+    tiles.find((tile) => !tile.isLocal)?.key ??
+    tiles[0]?.key
   )
 }
 
-// ─── The room stage ─────────────────────────────────────────────────────────
+/** LiveKit's ConnectionQuality enum → a word the panel can colour. */
+function qualityWord(
+  lk: LkModule | null,
+  quality: unknown
+): 'excellent' | 'good' | 'poor' | 'unknown' {
+  if (!lk || quality === undefined) return 'unknown'
+  const q = lk.ConnectionQuality
+  if (quality === q.Excellent) return 'excellent'
+  if (quality === q.Good) return 'good'
+  if (quality === q.Poor) return 'poor'
+  return 'unknown'
+}
 
 export type LiveKitGrant = {
   url: string
@@ -321,6 +263,18 @@ export function LiveKitRoomStage({
   const [e2eeActive, setE2eeActive] = useState(false)
   const [kicking, setKicking] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [layout, setLayout] = useState<'grid' | 'spotlight'>('spotlight')
+  const [pinnedKey, setPinnedKey] = useState<string | null>(null)
+  /** identity -> 0..1, and identity -> silenced for me. Local, never signalled. */
+  const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({})
+  const [peerMuted, setPeerMuted] = useState<Record<string, boolean>>({})
+  /**
+   * Bumped whenever a LOCAL track is swapped underneath a flag that did not
+   * change (device or background switch while the camera stays on). Script-side
+   * track changes fire no events, so the tile needs the nudge.
+   */
+  const [localMediaRev, setLocalMediaRev] = useState(0)
   // Bumped on every relevant RoomEvent so the tile grid re-renders.
   const [, setRoomVersion] = useState(0)
 
@@ -334,9 +288,7 @@ export function LiveKitRoomStage({
   const camFxRef = useRef<CameraEffectsHandle | null>(null)
   const screenTrackRef = useRef<MediaStreamTrack | null>(null)
   const screenAudioTrackRef = useRef<MediaStreamTrack | null>(null)
-  const screenVideoElRef = useRef<HTMLVideoElement | null>(null)
   const leavingRef = useRef(false)
-  const localVideoRef = useRef<HTMLVideoElement | null>(null)
   // The join runs once per grant; callbacks are read through refs so a parent
   // re-render never re-triggers it. `t` gets the same treatment — it changes
   // identity when the locale is switched, and a language toggle must never
@@ -394,6 +346,8 @@ export function LiveKitRoomStage({
         .on(lk.RoomEvent.ParticipantMetadataChanged, bump)
         .on(lk.RoomEvent.ActiveSpeakersChanged, bump)
         .on(lk.RoomEvent.ConnectionStateChanged, bump)
+        // The quality dot in the participants panel is only as live as this.
+        .on(lk.RoomEvent.ConnectionQualityChanged, bump)
         .on(lk.RoomEvent.Disconnected, () => {
           // Fires for both a voluntary leave and a server-side kick.
           micTrackRef.current?.stop()
@@ -776,36 +730,155 @@ export function LiveKitRoomStage({
     [onKickGuest, t]
   )
 
-  // Local camera preview. The published track is a plain MediaStreamTrack now
-  // (it comes out of the effects chain, not out of livekit-client), so it is
-  // wired by srcObject rather than the SDK's attach/detach. camBusy is in the
-  // deps because a device or background swap replaces the track underneath a
-  // camOn that never changed.
+  /**
+   * Nudge the local tiles when a track was swapped underneath a flag that did
+   * not change — a device or background switch while the camera stays on. The
+   * tile compares `srcObject` by reference and the swap fires no event of its
+   * own, so without this the tile keeps playing the track that was replaced.
+   */
   useEffect(() => {
-    if (!camOn) return
-    const el = localVideoRef.current
-    const track = camTrackRef.current
-    if (!el || !track) return
-    el.srcObject = new MediaStream([track])
-    void el.play().catch(() => {})
-    return () => {
-      el.srcObject = null
-    }
-  }, [camOn, camBusy])
+    setLocalMediaRev((v) => v + 1)
+  }, [camOn, camBusy, screenOn])
 
-  // Local screen preview. Same reasoning as the camera one: the published track
-  // is a plain MediaStreamTrack, so it is wired by srcObject.
-  useEffect(() => {
-    if (!screenOn) return
-    const el = screenVideoElRef.current
-    const track = screenTrackRef.current
-    if (!el || !track) return
-    el.srcObject = new MediaStream([track])
-    void el.play().catch(() => {})
-    return () => {
-      el.srcObject = null
+  // ── Tile model ───────────────────────────────────────────────────────────
+  //
+  // One tile per VIDEO SOURCE, not per participant, so someone presenting with
+  // their camera on appears twice — the way the app's own call screens have
+  // shown it since dual capture landed.
+  //
+  // The MediaStream handed to a tile has to keep its IDENTITY across renders:
+  // <video>.srcObject is compared by reference, so a fresh `new MediaStream()`
+  // every render would detach and re-attach the element on every keystroke
+  // elsewhere in the tree — a visible black flash per re-render. Cached by
+  // track id, rebuilt only when the underlying track actually changes.
+  const streamsRef = useRef(new Map<string, { trackId: string; stream: MediaStream }>())
+  const stableStream = (key: string, track: MediaStreamTrack | null): MediaStream | null => {
+    if (!track) {
+      streamsRef.current.delete(key)
+      return null
     }
-  }, [screenOn])
+    const cached = streamsRef.current.get(key)
+    if (cached && cached.trackId === track.id) return cached.stream
+    const stream = new MediaStream([track])
+    streamsRef.current.set(key, { trackId: track.id, stream })
+    return stream
+  }
+
+  const room = roomRef.current
+  const lk = lkModule
+  const remotes: RemoteParticipant[] = room
+    ? Array.from(room.remoteParticipants.values())
+    : []
+
+  const tiles: StageTile[] = []
+  const participantRows: MeetParticipantRow[] = []
+  const audioSinks: { sid: string; identity: string; track: RemoteTrack }[] = []
+
+  for (const participant of remotes) {
+    let camera: MediaStreamTrack | null = null
+    let screen: MediaStreamTrack | null = null
+    for (const pub of participant.videoTrackPublications.values()) {
+      const media = pub.track?.mediaStreamTrack ?? null
+      if (!media) continue
+      if (lk && pub.source === lk.Track.Source.ScreenShare) screen ??= media
+      else camera ??= media
+    }
+    for (const pub of participant.audioTrackPublications.values()) {
+      if (pub.track) audioSinks.push({ sid: pub.trackSid, identity: participant.identity, track: pub.track })
+    }
+
+    const name = displayName(participant)
+    const guest = isGuestParticipant(participant.metadata)
+    const micOff = !participant.isMicrophoneEnabled
+
+    tiles.push({
+      key: participant.identity,
+      identity: participant.identity,
+      label: name,
+      stream: stableStream(participant.identity, camera),
+      isLocal: false,
+      isScreen: false,
+      isGuest: guest,
+      micMuted: micOff,
+      camOff: !camera,
+      speaking: participant.isSpeaking,
+    })
+    if (screen) {
+      tiles.push({
+        key: `${participant.identity}#screen`,
+        identity: participant.identity,
+        label: name,
+        stream: stableStream(`${participant.identity}#screen`, screen),
+        isLocal: false,
+        isScreen: true,
+        isGuest: guest,
+        micMuted: true,
+        camOff: false,
+        speaking: false,
+      })
+    }
+    participantRows.push({
+      identity: participant.identity,
+      label: name,
+      isLocal: false,
+      isGuest: guest,
+      micMuted: micOff,
+      camOff: !camera,
+      screenSharing: !!screen,
+      speaking: participant.isSpeaking,
+      quality: qualityWord(lk, participant.connectionQuality),
+    })
+  }
+
+  // Own tiles last, so the strip reads "them, then me".
+  tiles.push({
+    key: 'local',
+    identity: LOCAL_KEY,
+    label: selfName,
+    stream: stableStream('local', camOn ? camTrackRef.current : null),
+    isLocal: true,
+    isScreen: false,
+    isGuest: selfIsGuest,
+    micMuted: !micEnabled,
+    camOff: !camOn,
+    speaking: room?.localParticipant.isSpeaking ?? false,
+  })
+  if (screenOn) {
+    tiles.push({
+      key: 'local#screen',
+      identity: LOCAL_KEY,
+      label: selfName,
+      stream: stableStream('local#screen', screenTrackRef.current),
+      isLocal: true,
+      isScreen: true,
+      isGuest: selfIsGuest,
+      micMuted: true,
+      camOff: false,
+      speaking: false,
+    })
+  }
+
+  // Drop cached streams for people who have left. Without this the map is a
+  // slow leak across a long meeting — every joiner who ever shared a screen
+  // keeps a MediaStream alive for as long as the tab is open.
+  {
+    const live = new Set(tiles.map((tile) => tile.key))
+    for (const key of Array.from(streamsRef.current.keys())) {
+      if (!live.has(key)) streamsRef.current.delete(key)
+    }
+  }
+
+  participantRows.push({
+    identity: LOCAL_KEY,
+    label: selfName,
+    isLocal: true,
+    isGuest: selfIsGuest,
+    micMuted: !micEnabled,
+    camOff: !camOn,
+    screenSharing: screenOn,
+    speaking: room?.localParticipant.isSpeaking ?? false,
+    quality: qualityWord(lk, room?.localParticipant.connectionQuality),
+  })
 
   if (!connected) {
     return (
@@ -818,11 +891,32 @@ export function LiveKitRoomStage({
     )
   }
 
-  const room = roomRef.current
-  const remotes: RemoteParticipant[] = room
-    ? Array.from(room.remoteParticipants.values())
-    : []
-  const participantCount = remotes.length + 1
+  const spotlightKey = pinnedKey ?? autoSpotlightKey(tiles)
+  const spotlightTile = tiles.find((tile) => tile.key === spotlightKey) ?? tiles[0]
+  const stripTiles = tiles.filter((tile) => tile.key !== spotlightTile?.key)
+  const alone = tiles.every((tile) => tile.isLocal)
+
+  const renderTile = (tile: StageTile, fillHeight: boolean) => (
+    <CallTile
+      key={tile.key}
+      peerId={tile.key}
+      stream={tile.stream}
+      label={tile.label}
+      isLocal={tile.isLocal}
+      micMuted={tile.micMuted}
+      camOff={tile.camOff}
+      screenSharing={tile.isScreen}
+      isGuest={tile.isGuest}
+      // The SFU already tells us who is talking, on the same socket the media
+      // arrives on. Letting each tile build its own AnalyserNode and 100ms
+      // timer to rediscover it is pure duplicated work in a ten-person room.
+      externalSpeaking={tile.speaking}
+      pinned={pinnedKey === tile.key}
+      onPinToggle={() => setPinnedKey((prev) => (prev === tile.key ? null : tile.key))}
+      fillHeight={fillHeight}
+      mediaRev={localMediaRev}
+    />
+  )
 
   return (
     <div className="flex h-dvh flex-col bg-void text-text-primary">
@@ -837,79 +931,97 @@ export function LiveKitRoomStage({
               {t('meet.encrypted')}
             </span>
           ) : null}
-          <span>{t('meet.participants').replace('{n}', String(participantCount))}</span>
+          <button
+            type="button"
+            onClick={() => setLayout((v) => (v === 'grid' ? 'spotlight' : 'grid'))}
+            className="rounded-md border border-border-strong px-2 py-1 text-[11px] text-text-muted transition hover:text-text-primary"
+            title={layout === 'grid' ? t('meet.layoutSpotlight') : t('meet.layoutGrid')}
+          >
+            {layout === 'grid' ? t('meet.layoutSpotlight') : t('meet.layoutGrid')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanelOpen((v) => !v)}
+            aria-pressed={panelOpen}
+            className={`rounded-md border px-2 py-1 text-[11px] transition ${
+              panelOpen
+                ? 'border-neon-cyan/60 text-neon-cyan'
+                : 'border-border-strong text-text-muted hover:text-text-primary'
+            }`}
+            title={t('meet.participantsPanel')}
+          >
+            {t('meet.participants').replace('{n}', String(participantRows.length))}
+          </button>
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto p-3">
-        {remotes.length === 0 ? (
-          <div className="flex h-full min-h-[10rem] items-center justify-center text-sm text-text-muted">
-            {t('meet.aloneHere')}
-          </div>
-        ) : null}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
-          {remotes.map((p) => (
-            <Fragment key={p.identity}>
-              <ParticipantTile
-                participant={p}
-                onKick={
-                  onKickGuest && kicking !== p.identity
-                    ? (identity, name) => void kickGuest(identity, name)
-                    : undefined
-                }
-              />
-              {/* Renders nothing unless this participant is actually sharing. */}
-              <ParticipantTile participant={p} variant="screen" />
-            </Fragment>
-          ))}
-          {/* Own screen share: a tile of its own, next to the camera one, the
-              way the app's call screens show it. Without it the sharer is the
-              only person in the room who cannot see what they are sharing. */}
-          {screenOn ? (
-            <div className="relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border border-neon-cyan/50 bg-void">
-              <video
-                ref={screenVideoElRef}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full object-contain"
-              />
-              <div className="absolute bottom-2 left-2 rounded-md bg-void/70 px-2 py-1 text-xs text-neon-cyan">
-                {t('call.screenSharing')}
-              </div>
-            </div>
+      <div className="flex min-h-0 flex-1">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3">
+          {alone ? (
+            <p className="pb-2 text-center text-sm text-text-muted">{t('meet.aloneHere')}</p>
           ) : null}
-          {/* Local tile: preview when the camera is on, avatar otherwise. */}
-          <div className="relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border border-border-strong bg-surface-elevated">
-            {camOn ? (
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full -scale-x-100 object-contain"
-              />
-            ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-2xl font-semibold text-text-primary">
-                {selfName.slice(0, 1).toUpperCase()}
-              </div>
-            )}
-            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-void/70 px-2 py-1 text-xs">
-              <span>{selfName}</span>
-              {selfIsGuest ? (
-                <span className="rounded bg-neon-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-neon-amber">
-                  {t('guest.badge')}
-                </span>
-              ) : null}
-              {!micEnabled ? (
-                <span className="text-text-muted">
-                  <MicIcon off />
-                </span>
+          {layout === 'spotlight' && spotlightTile ? (
+            <div className="flex h-full min-h-[16rem] flex-col gap-3">
+              <div className="min-h-0 flex-1">{renderTile(spotlightTile, true)}</div>
+              {stripTiles.length > 0 ? (
+                <div className="flex shrink-0 gap-2 overflow-x-auto pb-1">
+                  {stripTiles.map((tile) => (
+                    <div key={tile.key} className="h-24 w-40 flex-shrink-0 md:h-28 md:w-48">
+                      {renderTile(tile, true)}
+                    </div>
+                  ))}
+                </div>
               ) : null}
             </div>
-          </div>
-        </div>
-      </main>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
+              {/* fillHeight=false — the cells here have no resolved height of
+                  their own (the grid is auto-rows inside a scrolling main), so
+                  a tile asking for h-full would resolve to zero and render
+                  nothing at all. It takes a 16:9 box instead. */}
+              {tiles.map((tile) => (
+                <div key={tile.key}>{renderTile(tile, false)}</div>
+              ))}
+            </div>
+          )}
+        </main>
+
+        {panelOpen ? (
+          <aside className="w-[300px] max-w-[85vw] shrink-0">
+            <MeetParticipantsPanel
+              rows={participantRows}
+              volumes={peerVolumes}
+              muted={peerMuted}
+              onVolume={(identity, value) =>
+                setPeerVolumes((prev) => ({ ...prev, [identity]: value }))
+              }
+              onToggleMuted={(identity) =>
+                setPeerMuted((prev) => ({ ...prev, [identity]: !prev[identity] }))
+              }
+              onKick={
+                onKickGuest
+                  ? (identity, name) => {
+                      if (kicking !== identity) void kickGuest(identity, name)
+                    }
+                  : undefined
+              }
+              onClose={() => setPanelOpen(false)}
+            />
+          </aside>
+        ) : null}
+      </div>
+
+      {/* Hidden audio sinks — one per remote audio publication. They live
+          outside the tiles on purpose: a tile can be unmounted by a layout
+          change (the spotlight strip renders a subset), and losing a tile must
+          never silence the person it belonged to. */}
+      {audioSinks.map((sink) => (
+        <AudioSink
+          key={sink.sid}
+          track={sink.track}
+          volume={peerMuted[sink.identity] ? 0 : (peerVolumes[sink.identity] ?? 1)}
+        />
+      ))}
 
       <footer className="flex items-center justify-center gap-3 border-t border-border-strong px-4 py-3">
         <button

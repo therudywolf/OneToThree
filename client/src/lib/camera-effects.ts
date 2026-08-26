@@ -465,7 +465,6 @@ export async function createEffectedCameraTrack(
     outCtx.drawImage(person, 0, 0)
   }
 
-  let timer: number | null = null
   const tick = () => {
     if (disposed) return
     if (video.readyState < 2) return // no frame yet
@@ -489,12 +488,42 @@ export async function createEffectedCameraTrack(
       if (typeof console !== 'undefined') console.warn('[cam-fx] segment frame failed', err)
     }
   }
-  timer = window.setInterval(tick, FRAME_INTERVAL_MS)
+  /**
+   * Chained timeout, NOT setInterval.
+   *
+   * `setInterval(tick, 33)` fires on a schedule that knows nothing about how
+   * long a frame actually takes. On a machine where the segmenter has fallen
+   * back to CPU — which is the whole reason this DOM path exists, since the
+   * worker pipeline is Chromium-only — a frame can cost 60–100ms, and the
+   * interval keeps queueing more work on a main thread that is already behind.
+   * The queue never drains, the tab stops responding to input, and the call it
+   * is decorating goes down with it.
+   *
+   * Scheduling the NEXT frame only once the current one has finished makes the
+   * loop self-limiting: it runs at 30fps when it can and degrades to whatever
+   * the hardware manages when it cannot, instead of saturating.
+   */
+  let timer: number | null = null
+  const scheduleNext = (startedAt: number) => {
+    if (disposed) return
+    const spent = performance.now() - startedAt
+    timer = window.setTimeout(loop, Math.max(0, FRAME_INTERVAL_MS - spent))
+  }
+  function loop() {
+    if (disposed) return
+    const startedAt = performance.now()
+    try {
+      tick()
+    } finally {
+      scheduleNext(startedAt)
+    }
+  }
+  timer = window.setTimeout(loop, 0)
 
   const outStream = out.captureStream(30)
   const processed = outStream.getVideoTracks()[0]
   if (!processed) {
-    if (timer) window.clearInterval(timer)
+    if (timer) window.clearTimeout(timer)
     return null
   }
   try {
@@ -517,7 +546,7 @@ export async function createEffectedCameraTrack(
       if (disposed) return
       disposed = true
       activeHandles.delete(handle)
-      if (timer) window.clearInterval(timer)
+      if (timer) window.clearTimeout(timer)
       video.srcObject = null
       try {
         processed.stop()

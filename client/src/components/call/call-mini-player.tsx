@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useCallStore } from '@/store/callStore'
 import { useTranslation } from '@/hooks/use-translation'
 import { FloatingCallWindow } from '@/components/call/call-floating-window'
@@ -25,13 +24,6 @@ export function CallMiniPlayer({ onExpand, onEndCall, onToggleMute, peerName }: 
   const remoteStreams = useCallStore((s) => s.remoteStreams)
   const callStartTime = useCallStore((s) => s.callStartTime)
 
-  const [elapsed, setElapsed] = useState(0)
-
-  useEffect(() => {
-    if (!callStartTime) { setElapsed(0); return }
-    const id = window.setInterval(() => setElapsed(Date.now() - callStartTime), 500)
-    return () => window.clearInterval(id)
-  }, [callStartTime])
 
   if (!isCalling || !isMiniPlayer) return null
 
@@ -42,7 +34,7 @@ export function CallMiniPlayer({ onExpand, onEndCall, onToggleMute, peerName }: 
     <FloatingCallWindow
       stream={firstRemote}
       title={peerName || t('call.activePeer')}
-      elapsedMs={elapsed}
+      startedAt={callStartTime}
       micMuted={audioMuted}
       onExpand={onExpand}
       onToggleMute={onToggleMute}

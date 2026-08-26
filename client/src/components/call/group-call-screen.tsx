@@ -45,6 +45,7 @@ import { CallTile } from '@/components/call/call-tile'
 import { CallDebugPanel } from '@/components/call/call-debug-panel'
 import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
 import { CallSettingsPanel } from '@/components/call/call-settings-panel'
+import { CallDuration } from '@/components/call/call-duration'
 
 type Props = {
   userId: string
@@ -69,13 +70,6 @@ function getGridClass(count: number): string {
   if (count <= 4) return 'grid-cols-2'
   if (count <= 6) return 'grid-cols-2 sm:grid-cols-3'
   return 'grid-cols-3'
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
 }
 
 // --- MAIN GROUP CALL SCREEN ---
@@ -107,7 +101,6 @@ export function GroupCallScreen({
   const chatOpen = useCallStore((s) => s.chatOpen)
   const setChatOpen = useCallStore((s) => s.setChatOpen)
 
-  const [elapsed, setElapsed] = useState(0)
   const [showControls, setShowControls] = useState(true)
   const [showDebug, setShowDebug] = useState(false)
   /** Devices + voice chain, reachable without leaving the call (#3). */
@@ -163,21 +156,17 @@ export function GroupCallScreen({
     return () => mq.removeEventListener('change', apply)
   }, [])
 
-  // Timer — seed the start time in the store once so it survives minimize→expand
-  // remounts instead of resetting to 00:00 (#12).
-  useEffect(() => {
-    let start = useGroupCallStore.getState().callStartTime
-    if (!start) {
-      start = Date.now()
-      useGroupCallStore.getState().setCallStartTime(start)
-    }
-    const startAt = start
-    setElapsed(Date.now() - startAt)
-    const id = window.setInterval(() => {
-      setElapsed(Date.now() - startAt)
-    }, 500)
-    return () => window.clearInterval(id)
-  }, [])
+  // Seed the start time in the store ONCE so it survives minimize→expand
+  // remounts instead of resetting to 00:00 (#12). The ticking itself belongs to
+  // <CallDuration>, a leaf — running it here re-rendered this whole screen
+  // twice a second for a value that changes once a second.
+  const [callStartedAt] = useState(() => {
+    const existing = useGroupCallStore.getState().callStartTime
+    if (existing) return existing
+    const now = Date.now()
+    useGroupCallStore.getState().setCallStartTime(now)
+    return now
+  })
 
   // Auto-hide controls on desktop
   useEffect(() => {
@@ -386,6 +375,20 @@ export function GroupCallScreen({
         camOff={!isScreenTile && (participants[id]?.isVideoOff ?? false)}
         isGuest={participants[ownerId]?.isGuest ?? false}
         screenSharing={isScreenTile}
+        // On the SFU, who is talking arrives over the same socket the media
+        // does (ActiveSpeakersChanged → participants[].isSpeaking). Letting the
+        // tile build its own AnalyserNode and 100ms timer to rediscover it cost
+        // one of each PER PARTICIPANT — ten people, ten analysers, ten timers,
+        // all recomputing an answer already in the store. Mesh has no such
+        // signal (nothing ever sent group_call:speaking), so there the tile is
+        // still the only source and keeps its detector.
+        externalSpeaking={
+          isScreenTile
+            ? false
+            : transport === 'livekit'
+              ? (participants[id]?.isSpeaking ?? false)
+              : undefined
+        }
         pinned={pinnedId === id}
         onPinToggle={() => pinToggle(id)}
         showPin={showPin}
@@ -453,7 +456,7 @@ export function GroupCallScreen({
               </span>
             )}
             <p className="text-xs tracking-wider text-neon-cyan/70">
-              [{formatDuration(elapsed)}]
+              [<CallDuration startedAt={callStartedAt} />]
             </p>
             <button
               type="button"

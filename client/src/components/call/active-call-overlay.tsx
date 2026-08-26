@@ -24,6 +24,7 @@ import {
   HeadphoneOff,
   UserPlus,
   Link2,
+  SlidersHorizontal,
   MessageSquare,
   Users,
   Activity,
@@ -48,6 +49,7 @@ import { RelayToast } from '@/components/call/relay-toast'
 import { CallTile } from '@/components/call/call-tile'
 import { CallDebugPanel } from '@/components/call/call-debug-panel'
 import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
+import { CallSettingsPanel } from '@/components/call/call-settings-panel'
 import { isDocPipSupported, openDocPipWindow } from '@/lib/call-pip'
 import { toastError, toastSuccess } from '@/store/toastStore'
 
@@ -849,7 +851,17 @@ export function ActiveCallOverlay({
 
         {/* BODY: tiles + optional side panel */}
         <div className="flex min-h-0 flex-1">
-          <div ref={tilesAreaRef} className="relative min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void p-2">
+          {/* The control bar FLOATS over this area (it has to — the dropdowns
+              open upwards out of it). Without a reserved strip the bottom of
+              every tile lives underneath it: the name/quality row, the film
+              strip in spotlight mode, and the tile's own pin/fullscreen
+              buttons, all of them there to be looked at and pressed. The strip
+              is the bar's own offset plus its height plus the home indicator. */}
+          <div
+            ref={tilesAreaRef}
+            className="relative min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void p-2"
+            style={{ paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
+          >
             {layout === 'spotlight' ? (
               <div className="flex h-full flex-col gap-2">
                 <div className="min-h-0 flex-1">{renderTile(spotlightId)}</div>
@@ -881,7 +893,7 @@ export function ActiveCallOverlay({
                   left: localPip.x !== null ? `${localPip.x}px` : undefined,
                   top: localPip.y !== null ? `${localPip.y}px` : undefined,
                   right: localPip.x === null ? '1rem' : undefined,
-                  bottom: localPip.y === null ? '6.5rem' : undefined,
+                  bottom: localPip.y === null ? 'calc(6.5rem + env(safe-area-inset-bottom, 0px))' : undefined,
                   aspectRatio: '16/9',
                 }}
                 onPointerDown={(e) => onLocalPipPointerDown(e, 'move')}
@@ -906,6 +918,15 @@ export function ActiveCallOverlay({
                 <CallParticipantsPanel
                   rows={participantRows}
                   onClose={() => setSidePanel('none')}
+                />
+              ) : sidePanel === 'settings' ? (
+                <CallSettingsPanel
+                  onClose={() => setSidePanel('none')}
+                  onCameraPrefChanged={() => {
+                    // Re-read the prefs into the live camera: the panel writes
+                    // the device/background, the call owns the track.
+                    onSetCameraEffect?.(loadMediaPrefs().camEffect)
+                  }}
                 />
               ) : (
                 <CallDebugPanel
@@ -1164,6 +1185,15 @@ export function ActiveCallOverlay({
                     </div>
                   )}
                 </div>
+                <button
+                  onClick={() => { setSidePanel(sidePanel === 'settings' ? 'none' : 'settings'); setShowMoreMenu(false) }}
+                  className={`flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors ${
+                    isMd3 ? 'text-sm text-[var(--on-surface)] hover:bg-[var(--surface-variant)]' : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:bg-surface/5 hover:text-text-primary'
+                  }`}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {t('call.settingsTitle')}
+                </button>
                 <button
                   onClick={() => { setSidePanel(sidePanel === 'debug' ? 'none' : 'debug'); setShowMoreMenu(false) }}
                   className={`flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors ${

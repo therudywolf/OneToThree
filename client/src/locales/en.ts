@@ -77,6 +77,9 @@ const en = {
 
   // [CALL UI]
   'call.screenSharing': 'Screen Share',
+  'call.screenShareFailed': 'Could not start screen sharing',
+  'meet.screenOn': 'Share screen',
+  'meet.screenOff': 'Stop sharing',
   'call.startScreenShare': 'Share Screen',
   'call.stopScreenShare': 'Stop Sharing',
   'call.connP2P': 'Direct P2P',
@@ -129,6 +132,7 @@ const en = {
   'call.tileFullscreen': 'Fullscreen',
   'call.tilePin': 'Pin',
   'call.tileUnpin': 'Unpin',
+  'call.settingsTitle': 'Audio & devices',
   'call.debugTitle': 'Call diagnostics',
   'call.debugCopy': 'Copy diagnostics',
   'call.debugNoPeers': 'No active connections.',

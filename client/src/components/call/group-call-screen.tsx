@@ -21,6 +21,7 @@ import {
   Volume2,
   VolumeX,
   Link2,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
@@ -31,8 +32,8 @@ import {
   isGroupScreenAudioMuted,
   toggleGroupScreenAudioMuted,
 } from '@/lib/group-call-manager'
-import { loadMediaPrefs } from '@/lib/media-devices'
-import { warmupCameraEffects } from '@/lib/camera-effects'
+import { loadCamEffectImage, loadMediaPrefs } from '@/lib/media-devices'
+import { applyCameraEffectToActiveCalls, warmupCameraEffects } from '@/lib/camera-effects'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useCallStore } from '@/store/callStore'
 import { toastError, toastSuccess } from '@/store/toastStore'
@@ -43,6 +44,7 @@ import { useCapabilities } from '@/components/capabilities-provider'
 import { CallTile } from '@/components/call/call-tile'
 import { CallDebugPanel } from '@/components/call/call-debug-panel'
 import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
+import { CallSettingsPanel } from '@/components/call/call-settings-panel'
 
 type Props = {
   userId: string
@@ -101,6 +103,8 @@ export function GroupCallScreen({
   const [elapsed, setElapsed] = useState(0)
   const [showControls, setShowControls] = useState(true)
   const [showDebug, setShowDebug] = useState(false)
+  /** Devices + voice chain, reachable without leaving the call (#3). */
+  const [showSettings, setShowSettings] = useState(false)
   const [isNarrow, setIsNarrow] = useState(false)
   // Seed from the manager's LIVE media state, not from props/false — minimizing
   // fully unmounts this screen, so on expand these must re-read the actual track
@@ -433,7 +437,12 @@ export function GroupCallScreen({
 
         {/* BODY: tiles + optional side panel */}
         <div className="flex min-h-0 flex-1">
-          <div className="min-w-0 flex-1 overflow-y-auto overscroll-y-contain bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void p-2">
+          {/* Reserved strip for the floating control bar — see the same comment
+              in active-call-overlay.tsx. */}
+          <div
+            className="min-w-0 flex-1 overflow-y-auto overscroll-y-contain bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void p-2"
+            style={{ paddingBottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
+          >
             {layout === 'spotlight' || pinnedId ? (
               <div className="flex h-full flex-col gap-2">
                 <div className="min-h-0 flex-1">
@@ -470,9 +479,21 @@ export function GroupCallScreen({
             )}
           </div>
 
-          {(showParticipantPanel || showDebug) && (
+          {(showParticipantPanel || showDebug || showSettings) && (
             <aside className="w-[300px] max-w-[85vw] shrink-0 border-l border-border-strong">
-              {showDebug ? (
+              {showSettings ? (
+                <CallSettingsPanel
+                  onClose={() => setShowSettings(false)}
+                  onCameraPrefChanged={() => {
+                    const prefs = loadMediaPrefs()
+                    applyCameraEffectToActiveCalls(
+                      prefs.camEffect,
+                      loadCamEffectImage(),
+                      prefs.camBlurPx
+                    )
+                  }}
+                />
+              ) : showDebug ? (
                 <CallDebugPanel
                   peers={peerConnections}
                   labels={Object.fromEntries(
@@ -617,7 +638,7 @@ export function GroupCallScreen({
 
           {/* Participants */}
           <button
-            onClick={() => { setShowDebug(false); setShowParticipantPanel(!showParticipantPanel) }}
+            onClick={() => { setShowDebug(false); setShowSettings(false); setShowParticipantPanel(!showParticipantPanel) }}
             className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               showParticipantPanel
                 ? 'bg-neon-cyan/10 text-neon-cyan'
@@ -647,9 +668,25 @@ export function GroupCallScreen({
             </button>
           ) : null}
 
+          {/* Audio & devices — the whole point of #3: the noise gate and the
+              microphone picker were behind a modal this z-[200] surface covers. */}
+          <button
+            onClick={() => { setShowParticipantPanel(false); setShowDebug(false); setShowSettings(!showSettings) }}
+            className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
+              showSettings
+                ? 'bg-neon-cyan/10 text-neon-cyan'
+                : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'
+            }`}
+            title={t('call.settingsTitle')}
+            aria-label={t('call.settingsTitle')}
+            aria-pressed={showSettings}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </button>
+
           {/* Debug */}
           <button
-            onClick={() => { setShowParticipantPanel(false); setShowDebug(!showDebug) }}
+            onClick={() => { setShowParticipantPanel(false); setShowSettings(false); setShowDebug(!showDebug) }}
             className={`hidden h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:flex md:w-14 ${
               showDebug
                 ? 'bg-neon-cyan/10 text-neon-cyan'

@@ -78,7 +78,7 @@ export type CallProtocolState = {
   // [SIDE_PANELS] — in-call side panel (participants / debug) and the
   // Discord-style side chat. Chat is a store flag (not overlay-local state)
   // because ChatApp renders the actual chat panel next to the shrunk overlay.
-  sidePanel: 'none' | 'participants' | 'debug'
+  sidePanel: 'none' | 'participants' | 'debug' | 'settings'
   chatOpen: boolean
 
   // [LOCAL_MEDIA_REV] — bumped after every LOCAL stream mutation (camera
@@ -117,7 +117,7 @@ export type CallProtocolState = {
   setCallChatId: (chatId: string | null) => void
   setPeerVolume: (peerId: string, volume: number) => void
   setPeerLocalMuted: (peerId: string, muted: boolean) => void
-  setSidePanel: (panel: 'none' | 'participants' | 'debug') => void
+  setSidePanel: (panel: 'none' | 'participants' | 'debug' | 'settings') => void
   setChatOpen: (open: boolean) => void
   bumpLocalMediaRev: () => void
 
@@ -190,7 +190,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     }))
   const setPeerLocalMuted = (peerId: string, muted: boolean) =>
     set((state) => ({ peerLocalMuted: { ...state.peerLocalMuted, [peerId]: muted } }))
-  const setSidePanel = (panel: 'none' | 'participants' | 'debug') => set({ sidePanel: panel })
+  const setSidePanel = (panel: 'none' | 'participants' | 'debug' | 'settings') => set({ sidePanel: panel })
   const setChatOpen = (open: boolean) => set({ chatOpen: open })
   const bumpLocalMediaRev = () => set((state) => ({ localMediaRev: state.localMediaRev + 1 }))
   const reset = () => {

@@ -154,10 +154,11 @@ describe('storage media evict -> restore lifecycle', () => {
     }
   })
 
-  // The presigned PUT signs the client's Content-Type, so whatever is declared
+  // The presigned PUT signs the client's Content-Type, so whatever is SIGNED
   // here is what s3.<domain> serves later — an active text/html object on a
   // sibling of the app origin (fm_session is scoped to the registrable domain).
-  it('refuses renderable Content-Types and refuses to re-type an object on restore', async () => {
+  // The server therefore signs a type of its own choosing and hands it back.
+  it('neutralizes renderable Content-Types and refuses to re-type an object on restore', async () => {
     const [user] = await db
       .insert(users)
       .values({
@@ -169,22 +170,77 @@ describe('storage media evict -> restore lifecycle', () => {
     const [chat] = await db.insert(chats).values({ type: 'group_e2e', name: 'stor chat3' }).returning({ id: chats.id })
     await db.insert(chatMembers).values({ chatId: chat.id, userId: user.id, encryptedGroupKey: null, role: 'owner' })
     try {
-      // .txt is an allowlisted extension and 'text/' an allowlisted prefix —
-      // only the renderable-type denylist stops this combination.
+      // .txt is an allowlisted extension and 'text/' an allowlisted prefix, so
+      // this combination is how an attacker used to smuggle an active page in.
+      // It is accepted now — as opaque bytes, which is what makes it harmless.
       const html = await request(app!.server)
         .post('/api/storage/upload-url')
         .set('Cookie', cookie)
         .send({ fileName: 'note.txt', fileType: 'text/html', chatId: chat.id, fileSize: 2000 })
-        .expect(400)
-      expect(html.body.error).toBe('MIME_TYPE_NOT_ALLOWED')
+        .expect(200)
+      expect(html.body.contentType).toBe('application/octet-stream')
+      const [htmlRow] = await db
+        .select({ contentType: attachments.contentType })
+        .from(attachments)
+        .where(eq(attachments.objectKey, html.body.filePath as string))
+      expect(htmlRow?.contentType).toBe('application/octet-stream')
 
       for (const fileType of ['application/xhtml+xml', 'text/xml']) {
-        await request(app!.server)
+        const res = await request(app!.server)
           .post('/api/storage/upload-url')
           .set('Cookie', cookie)
           .send({ fileName: 'note.xml', fileType, chatId: chat.id, fileSize: 2000 })
-          .expect(400)
+          .expect(200)
+        expect(res.body.contentType).toBe('application/octet-stream')
       }
+
+      // The extension alone is enough — a .html named file declared as harmless
+      // text/plain is still stored as bytes, because the extension is what an
+      // OS file handler and a disposition-less download follow.
+      const byExt = await request(app!.server)
+        .post('/api/storage/upload-url')
+        .set('Cookie', cookie)
+        .send({ fileName: 'page.html', fileType: 'text/plain', chatId: chat.id, fileSize: 2000 })
+        .expect(200)
+      expect(byExt.body.contentType).toBe('application/octet-stream')
+      expect(byExt.body.filePath).toMatch(/\.html$/)
+
+      // Source files — the whole point of the change. Previously a hard 400 on
+      // the extension allow-list.
+      for (const fileName of ['main.py', 'app.tsx', 'compose.yml', 'fix.patch', 'query.sql']) {
+        const res = await request(app!.server)
+          .post('/api/storage/upload-url')
+          .set('Cookie', cookie)
+          .send({ fileName, fileType: 'text/plain', chatId: chat.id, fileSize: 512 })
+          .expect(200)
+        expect(res.body.contentType).toBe('application/octet-stream')
+      }
+
+      // SVG is the one that stays refused: it is only useful if it renders, and
+      // an SVG that renders is an SVG that can run script.
+      const svg = await request(app!.server)
+        .post('/api/storage/upload-url')
+        .set('Cookie', cookie)
+        .send({ fileName: 'logo.svg', fileType: 'image/svg+xml', chatId: chat.id, fileSize: 512 })
+        .expect(400)
+      expect(svg.body.error).toBe('SVG_XML_NOT_ALLOWED')
+
+      // Executables and installers stay blocked on the extension.
+      const exe = await request(app!.server)
+        .post('/api/storage/upload-url')
+        .set('Cookie', cookie)
+        .send({ fileName: 'setup.exe', fileType: 'application/octet-stream', chatId: chat.id, fileSize: 512 })
+        .expect(400)
+      expect(exe.body.error).toBe('FILE_TYPE_NOT_ALLOWED')
+
+      // A non-neutralized type is preserved verbatim: an already-loaded client
+      // PUTs what it declared, and narrowing it would break its signature.
+      const jpg = await request(app!.server)
+        .post('/api/storage/upload-url')
+        .set('Cookie', cookie)
+        .send({ fileName: 'shot.jpg', fileType: 'image/jpeg', chatId: chat.id, fileSize: 512 })
+        .expect(200)
+      expect(jpg.body.contentType).toBe('image/jpeg')
 
       // A real upload, then an evicted object another member could re-presign.
       const up = await request(app!.server)

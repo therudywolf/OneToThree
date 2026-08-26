@@ -31,6 +31,19 @@ export function explainSendError(err: unknown): string {
         return 'Cannot send an empty message.'
       case MEDIA_TOO_LARGE_CODE:
         return 'File too large.'
+      // Server-side upload gates. These used to fall through to the generic
+      // `Send failed: FILE_TYPE_NOT_ALLOWED`, which reads as a bug rather than
+      // as a rule and gave no hint what would work instead.
+      case 'FILE_TYPE_NOT_ALLOWED':
+        return 'This file extension is not accepted — executables and installers are blocked. Zip it and send the archive.'
+      case 'MIME_TYPE_NOT_ALLOWED':
+        return 'This file type is not accepted. Zip it and send the archive.'
+      case 'SVG_XML_NOT_ALLOWED':
+        return 'SVG images are not accepted — they can carry scripts. Send a PNG, or zip the .svg.'
+      case 'USER_QUOTA_EXCEEDED':
+        return 'Storage quota reached — delete some attachments and try again.'
+      case 'CATEGORY_LIMIT_EXCEEDED':
+        return 'File is over the size limit for its type.'
       case 'DIRECT_FANOUT_REQUIRED':
         return 'Server rejected send (fan-out). Try again or update the app.'
       default:

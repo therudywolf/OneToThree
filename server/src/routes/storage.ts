@@ -37,7 +37,36 @@ const CHAT_OBJECT_KEY_RE =
 const AVATAR_KEY_RE =
   /^avatars\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[^/]+$/i
 
-/** Allowed file extensions for upload. Blocks executable, script, and archive-bomb types. */
+/**
+ * Extensions whose bytes are stored — and therefore served — as opaque
+ * `application/octet-stream`, whatever the uploader declared.
+ *
+ * These are the source, markup and config files people actually send each
+ * other: a page to review, a stack trace, a diff, a compose file. Refusing
+ * them (which is what the extension allow-list used to do) made the messenger
+ * useless for the one audience that writes them. They are safe to ACCEPT and
+ * unsafe to SERVE ACTIVE, and those are two different decisions — see
+ * {@link storedContentType}.
+ */
+const NEUTRALIZED_EXTENSIONS = new Set([
+  // markup / stylesheets
+  '.html', '.htm', '.xhtml', '.xml', '.xsl', '.xslt', '.css', '.scss', '.sass', '.less',
+  // scripts the browser itself would run
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.mts', '.cts', '.vue', '.svelte',
+  // other languages
+  '.py', '.rb', '.php', '.pl', '.lua', '.r', '.go', '.rs', '.java', '.kt', '.kts',
+  '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.cs', '.m', '.mm', '.swift',
+  '.dart', '.scala', '.clj', '.ex', '.exs', '.erl', '.hs', '.f90', '.asm', '.s',
+  // shells and build files
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.psm1', '.mk', '.cmake', '.gradle',
+  '.dockerfile', '.tf', '.tfvars',
+  // data / config / logs
+  '.yml', '.yaml', '.toml', '.ini', '.cfg', '.conf', '.properties', '.sql',
+  '.log', '.patch', '.diff', '.tsv', '.srt', '.vtt', '.tex', '.rst', '.adoc',
+  '.lock', '.sum', '.map', '.po', '.pot', '.plist', '.gitignore', '.editorconfig',
+])
+
+/** Allowed file extensions for upload. Blocks executable and archive-bomb types. */
 const ALLOWED_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.ico', '.avif',
   '.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v',
@@ -46,6 +75,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.txt', '.csv', '.json', '.xml', '.md', '.rtf',
   '.zip', '.7z', '.tar', '.gz',
   '.blob', '.bin', '.weba', '.opus',
+  ...NEUTRALIZED_EXTENSIONS,
 ])
 
 /** Allowed MIME type prefixes for upload. */
@@ -89,9 +119,21 @@ function isAllowedExtension(ext: string): boolean {
  * for, so declaring `text/html` for an allowlisted `.txt` name was enough to
  * store an active HTML page and get it executed from `s3.<domain>`; `fm_session`
  * is scoped to the registrable domain, so that origin can overwrite the app's
- * cookies. We cannot force a safe Content-Type instead (it is part of the
- * signature — the client would get SignatureDoesNotMatch), so these are refused
- * outright. `image/svg+xml` keeps its own error code for the client.
+ * cookies.
+ *
+ * These used to be refused outright, on the reasoning that a safe Content-Type
+ * could not be forced instead because it is part of the signature. That is true
+ * of a signature the CLIENT chooses — but the server is the one signing, and it
+ * can sign whatever it likes as long as it tells the client which value to PUT
+ * (`contentType` in the presign response). So the type is NEUTRALIZED rather
+ * than rejected: the bytes are stored, and served, as opaque
+ * `application/octet-stream`. That is the same protection with none of the
+ * collateral damage — sending a colleague an `.html` page or a `.py` file used
+ * to be impossible.
+ *
+ * `image/svg+xml` keeps its own error code and stays refused: unlike a source
+ * file, an SVG is only worth sending if it renders as an image, and an SVG that
+ * renders is an SVG that can run script.
  */
 const RENDERABLE_MIME_DENYLIST = new Set([
   'text/html',
@@ -101,9 +143,16 @@ const RENDERABLE_MIME_DENYLIST = new Set([
   'application/xml',
   'text/xsl',
   'application/xslt+xml',
-  'image/svg+xml',
-  'image/svg',
 ])
+
+/**
+ * SVG stays REFUSED rather than neutralized, on every endpoint that presigns.
+ * `image/svg+xml` matches the `image/` prefix, so without this it would sail
+ * through the allow-list the moment it left the neutralize set.
+ */
+const SVG_MIMES = new Set(['image/svg+xml', 'image/svg'])
+
+const OCTET_STREAM = 'application/octet-stream'
 
 function baseMimeType(mime: string): string {
   return mime.toLowerCase().split(';')[0].trim()
@@ -111,8 +160,29 @@ function baseMimeType(mime: string): string {
 
 function isAllowedMimeType(mime: string): boolean {
   const lower = baseMimeType(mime)
-  if (RENDERABLE_MIME_DENYLIST.has(lower)) return false
+  if (SVG_MIMES.has(lower)) return false
+  if (RENDERABLE_MIME_DENYLIST.has(lower)) return true
   return ALLOWED_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))
+}
+
+/**
+ * The Content-Type the server will SIGN — and hence the one the object is
+ * stored and served with. Not necessarily the type the client declared.
+ *
+ * Anything that a browser would treat as an active document in the storage
+ * origin becomes `application/octet-stream`, keyed on BOTH the declared MIME
+ * and the file extension: MinIO's inline rendering follows the stored
+ * Content-Type, but the extension is what a `Content-Disposition`-less download
+ * and every OS file handler follow, and either alone can be lied about.
+ *
+ * The declared type is preserved verbatim (`;codecs=…` and all) for everything
+ * else, because that is what an already-loaded client will PUT — narrowing it
+ * would invalidate its signature for types that work today.
+ */
+export function storedContentType(declaredMime: string, ext: string): string {
+  if (RENDERABLE_MIME_DENYLIST.has(baseMimeType(declaredMime))) return OCTET_STREAM
+  if (NEUTRALIZED_EXTENSIONS.has(ext.toLowerCase())) return OCTET_STREAM
+  return declaredMime
 }
 
 function weakDownloadEtag(parts: Array<string | number | Date | null | undefined>): string {
@@ -194,8 +264,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     const { fileName: rawFileName, fileType, chatId, fileSize } = parsed.data
     const fileName = sanitizeFileName(rawFileName)
 
-    const mimeLower = fileType.toLowerCase().split(';')[0].trim()
-    if (mimeLower === 'image/svg+xml') {
+    if (SVG_MIMES.has(baseMimeType(fileType))) {
       return reply.status(400).send({ error: 'SVG_XML_NOT_ALLOWED' })
     }
 
@@ -263,12 +332,16 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
 
     const key = `chats/${chatId}/${user.id}/${randomUUID()}${ext}`
 
+    // What we SIGN, what we RECORD and what the client must PUT are one value —
+    // and it is not necessarily what the client asked for (see storedContentType).
+    const contentType = storedContentType(fileType, ext)
+
     const uploadUrl = rewritePresignedUrlToPublicBase(
       await presignPutObject({
         client: presignClient,
         bucket,
         key,
-        contentType: fileType,
+        contentType,
       })
     )
 
@@ -281,7 +354,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
         uploaderId: user.id,
         bucket,
         objectKey: key,
-        contentType: fileType,
+        contentType,
         sizeBytes: fileSize,
       })
     } catch (err) {
@@ -296,6 +369,10 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       uploadUrl,
       filePath: key,
       bucket,
+      // The PUT must carry EXACTLY this or SigV4 rejects it. Older clients that
+      // ignore the field keep working: it only differs from what they declared
+      // for the types they could not upload at all before this existed.
+      contentType,
     })
   })
 
@@ -472,7 +549,14 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     // re-presign another member's key as text/html and have it served, active,
     // from s3.<domain>. Compare base types only: the client strips `;codecs=…`
     // before re-uploading, so an exact match would break voice/video restore.
-    if (baseMimeType(parsed.data.fileType) !== baseMimeType(att.contentType)) {
+    // Compare what the re-upload would actually STORE, not what it declared:
+    // a `.html` attachment was recorded as octet-stream on the way in, and the
+    // client re-declares the original `text/html` from its cached envelope.
+    const restoreContentType = storedContentType(
+      parsed.data.fileType,
+      extensionFromFileName(filePath)
+    )
+    if (baseMimeType(restoreContentType) !== baseMimeType(att.contentType)) {
       return reply.status(409).send({ error: 'CONTENT_TYPE_MISMATCH' })
     }
 
@@ -493,11 +577,16 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
         client: presignClient,
         bucket: att.bucket || bucket,
         key: filePath,
-        contentType: parsed.data.fileType,
+        contentType: restoreContentType,
       })
     )
 
-    return reply.send({ uploadUrl, filePath, bucket: att.bucket || bucket })
+    return reply.send({
+      uploadUrl,
+      filePath,
+      bucket: att.bucket || bucket,
+      contentType: restoreContentType,
+    })
   })
 
   app.post('/restore-complete', { preHandler: requireMedia, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -548,8 +637,12 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     if (!att) {
       return reply.status(404).send({ error: 'ATTACHMENT_NOT_FOUND' })
     }
-    // Same no-re-typing rule as /restore-url (see the comment there).
-    if (baseMimeType(parsed.data.fileType) !== baseMimeType(att.contentType)) {
+    // Same no-re-typing rule as /restore-url (see the comment there), compared
+    // on the STORED type for the same reason.
+    if (
+      baseMimeType(storedContentType(parsed.data.fileType, extensionFromFileName(filePath))) !==
+      baseMimeType(att.contentType)
+    ) {
       return reply.status(409).send({ error: 'CONTENT_TYPE_MISMATCH' })
     }
 

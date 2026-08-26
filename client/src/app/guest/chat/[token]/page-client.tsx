@@ -26,7 +26,14 @@ import {
   type FormEvent,
 } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { guestEnter, guestLeave, resolveGuestToken } from '@/lib/api/guest'
+import {
+  guestEnter,
+  guestEnterAsMe,
+  guestLeave,
+  resolveGuestToken,
+  resolveGuestLinkTarget,
+  type GuestLinkTarget,
+} from '@/lib/api/guest'
 import {
   clearGuestSession,
   createGuestKeys,
@@ -86,6 +93,8 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
   const [stage, setStage] = useState<Stage>({ kind: 'loading' })
   const [hostName, setHostName] = useState('')
   const [nickname, setNickname] = useState('')
+  /** The account this visitor already has here, if any (#6). */
+  const [me, setMe] = useState<GuestLinkTarget | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -248,6 +257,16 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
           return
         }
         setHostName(info.host_name)
+        // #6 — a visitor who already has an account here should not be made to
+        // mint a throwaway one. Probed speculatively; no session ⇒ null ⇒ the
+        // page keeps its original single door.
+        const mine = await resolveGuestLinkTarget(token)
+        if (!aliveRef.current) return
+        if (mine?.member && mine.chat_id) {
+          router.replace(`/?chat=${encodeURIComponent(mine.chat_id)}`)
+          return
+        }
+        if (mine) setMe(mine)
         setStage({ kind: 'form' })
       } catch (err) {
         if (!aliveRef.current) return
@@ -261,6 +280,28 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
       teardownRealtime()
     }
   }, [token, router, openChat, teardownRealtime])
+
+  /**
+   * #6 — take the link with the account this browser is already signed in as.
+   * No guest row, no in-tab keypair, no expiry: the server hands back the
+   * ordinary direct chat (creating it only if the two have none yet), and the
+   * app opens it like any other.
+   */
+  const enterAsMe = useCallback(async () => {
+    if (!token) return
+    setBusy(true)
+    setFormError(null)
+    try {
+      const { chat_id: chatId } = await guestEnterAsMe(token)
+      router.replace(`/?chat=${encodeURIComponent(chatId)}`)
+    } catch (err) {
+      const code = err instanceof Error ? err.message : ''
+      if (code === 'INVITE_FULL') setStage({ kind: 'taken' })
+      else if (code === 'INVITE_NOT_FOUND') setStage({ kind: 'invalid' })
+      else setFormError(t('gs.enterAsMeFailed'))
+      setBusy(false)
+    }
+  }, [token, router, t])
 
   // ── Step 2: nickname card → enter → login → chat ──────────────────────────
   const submitEnter = useCallback(
@@ -406,6 +447,30 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
           {t('gs.tempChatWith').replace('{host}', hostName)}
         </h1>
         <p className="mt-1 text-sm text-text-muted">{t('gs.introduceChat')}</p>
+        {/* #6 — the complaint in one line: a registered user following this link
+            was told to create a temporary account. Now the account they have is
+            the FIRST offer, and the throwaway one is what is left below it. */}
+        {me ? (
+          <div className="mt-4 rounded-lg border border-border-strong bg-surface-elevated/60 p-3">
+            <p className="text-xs text-text-muted">
+              {t('gs.signedInAs').replace('{name}', me.username)}
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void enterAsMe()}
+              className="mt-2 w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('gs.openChatAsAccount').replace('{name}', me.username)}
+            </button>
+            <p className="mt-2 text-xs leading-relaxed text-text-muted">
+              {t('gs.openChatAsAccountHint')}
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-text-muted">
+              {t('gs.orCreateTempAccount')}
+            </p>
+          </div>
+        ) : null}
         <form onSubmit={(e) => void submitEnter(e)} className="mt-4 space-y-3">
           <label className="block">
             <span className="mb-1 block text-sm text-text-muted">
@@ -420,7 +485,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
                 setFormError(null)
               }}
               maxLength={32}
-              autoFocus
+              autoFocus={!me}
               placeholder={t('gs.namePlaceholder')}
               className="w-full rounded-lg border border-border-strong bg-void px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
             />

@@ -246,7 +246,7 @@ async function revokeGuestInvitesFor(
  * (idempotent create). `exec` lets the caller run the lookup INSIDE the
  * transaction that holds the pair's advisory lock — see POST /.
  */
-async function findExistingDirectE2EBetween(
+export async function findExistingDirectE2EBetween(
   userA: string,
   userB: string,
   exec: Db = db

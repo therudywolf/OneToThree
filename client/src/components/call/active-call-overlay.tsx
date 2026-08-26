@@ -23,6 +23,7 @@ import {
   Headphones,
   HeadphoneOff,
   UserPlus,
+  Link2,
   MessageSquare,
   Users,
   Activity,
@@ -48,6 +49,7 @@ import { CallTile } from '@/components/call/call-tile'
 import { CallDebugPanel } from '@/components/call/call-debug-panel'
 import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
 import { isDocPipSupported, openDocPipWindow } from '@/lib/call-pip'
+import { toastError, toastSuccess } from '@/store/toastStore'
 
 type Props = {
   onEndCall: () => void
@@ -76,6 +78,12 @@ type Props = {
   promoteCandidateIds?: string[]
   /** Promote this 1:1 call to a group call with the given invitee (#4). */
   onPromote?: (inviteeUserId: string) => Promise<void>
+  /**
+   * Move this 1:1 call into the chat's SFU room so a link guest is not admitted
+   * into an empty one (#5). Awaited BEFORE the link is handed out. Absent ⇒ the
+   * guest-link button is not offered.
+   */
+  onOpenToGuests?: (chatId: string) => Promise<void>
   onSetQuality: (level: QualityLevel) => void
   /** Switch the camera background effect (none/blur/image) live. */
   onSetCameraEffect?: (kind: CameraEffectPref) => void
@@ -197,6 +205,7 @@ export function ActiveCallOverlay({
   peerName,
   promoteCandidateIds,
   onPromote,
+  onOpenToGuests,
   onSetCameraEffect,
 }: Props) {
   const { t } = useTranslation()
@@ -256,6 +265,46 @@ export function ActiveCallOverlay({
   const tilesAreaRef = useRef<HTMLDivElement | null>(null)
   // Document-PiP popout window (null = not popped out).
   const [pipWindow, setPipWindow] = useState<Window | null>(null)
+  // Guest link for THIS call (#5).
+  const [inviteBusy, setInviteBusy] = useState(false)
+
+  /**
+   * Hand out a guest link for the chat this call belongs to.
+   *
+   * The order matters and is the whole fix: a guest is admitted into the SFU
+   * room named after the chat, and a 1:1 call is peer-to-peer — so the call is
+   * moved into that room FIRST, and only then is a link minted. Copying a link
+   * out of a call that never migrated is how a guest ended up alone in an empty
+   * room while the two hosts kept talking without them.
+   *
+   * Reuses a live link for this room when one exists, so the seat counter keeps
+   * counting the same link (mirrors the group screen's button).
+   */
+  const handleCopyGuestLink = useCallback(async () => {
+    if (!callChatId || !onOpenToGuests || inviteBusy) return
+    setInviteBusy(true)
+    try {
+      await onOpenToGuests(callChatId)
+      const { listGuestInvites, createGuestInvite, guestInviteUrl } = await import(
+        '@/lib/api/guest'
+      )
+      const live = await listGuestInvites()
+      const existing = live.find(
+        (i) =>
+          i.purpose === 'call' &&
+          !i.exhausted &&
+          (i.chat_id === callChatId || i.room_id === callChatId)
+      )
+      const invite =
+        existing ?? (await createGuestInvite({ purpose: 'call', chatId: callChatId }))
+      await navigator.clipboard.writeText(guestInviteUrl(invite))
+      toastSuccess(t('guest.linkCopied'))
+    } catch {
+      toastError(t('guest.linkCopyFailed'))
+    } finally {
+      setInviteBusy(false)
+    }
+  }, [callChatId, onOpenToGuests, inviteBusy, t])
 
   useEffect(() => {
     if (!showAddMenu || !promoteCandidateIds?.length) return
@@ -1124,6 +1173,18 @@ export function ActiveCallOverlay({
                   <Activity className="h-3.5 w-3.5" />
                   {t('call.debugTitle')}
                 </button>
+                {onOpenToGuests && callChatId && (
+                  <button
+                    onClick={() => { void handleCopyGuestLink(); setShowMoreMenu(false) }}
+                    disabled={inviteBusy}
+                    className={`flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors disabled:opacity-50 ${
+                      isMd3 ? 'text-sm text-[var(--on-surface)] hover:bg-[var(--surface-variant)]' : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:bg-surface/5 hover:text-text-primary'
+                    }`}
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    {t('guest.copyMeetingLink')}
+                  </button>
+                )}
                 {onPromote && (promoteCandidateIds?.length ?? 0) > 0 && (
                   <button
                     onClick={() => { setShowAddMenu(true); setShowMoreMenu(false) }}

@@ -31,6 +31,7 @@ function card(over: Partial<KnockCard> = {}): KnockCard {
     id: 'k1',
     nickname: 'Аня',
     chatId: null,
+    roomId: 'room-1',
     expiresAt: NOW + TTL_MS,
     busy: false,
     error: null,

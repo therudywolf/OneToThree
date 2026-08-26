@@ -26,6 +26,7 @@ import {
   MEDIA_PERMISSION_DENIED_CODE,
 } from '@/lib/media-limits'
 import { useCallStore } from '@/store/callStore'
+import { useGroupCallStore } from '@/store/groupCallStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { lookupUsers } from '@/lib/api/users'
 import { KDF_CTX, deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
@@ -790,6 +791,45 @@ export function useWebRTC(userId: string | null) {
     //    invitee (banner) and fires the offline push if they're disconnected.
     const ok = await joinGroupCall(chat.id, false)
     if (ok) useSessionStore.getState().setActiveChatId(chat.id)
+  }, [userId, severAllLinks])
+
+  /**
+   * Move the running 1:1 call into the chat's OWN SFU room, same chat, same two
+   * people (#5).
+   *
+   * A 1:1 call is peer-to-peer; a link guest is ALWAYS admitted into the LiveKit
+   * room named after the chat. Nothing used to bridge the two, so a host who
+   * pressed "admit" watched the guest disappear into an empty room while the
+   * two of them carried on talking over a WebRTC link the guest was not on.
+   * Migrating first is what makes the invite mean anything.
+   *
+   * Reuses the `promote_to_group` signal the 1:1→group promotion already
+   * defines: the peer's handler only ever tears down and joins the room it is
+   * told, and it does not care that this room is the chat they were already in.
+   *
+   * No-op when there is no 1:1 call to move, or when we are already in the
+   * group call for this room — both mean the room is already the live one.
+   */
+  const openCallToGuests = useCallback(async (chatId: string): Promise<void> => {
+    if (!chatId || !userId) return
+    const group = useGroupCallStore.getState()
+    if (group.isInGroupCall && group.roomId === chatId) return
+    const call = useCallStore.getState()
+    if (!call.isCalling || call.callChatId !== chatId) return
+
+    const peers = new Set<string>([
+      ...pcsRef.current.keys(),
+      ...relayPeersRef.current,
+    ])
+    peers.delete(userId)
+    // Tell everyone BEFORE tearing down, so the signal wins the teardown race
+    // (same ordering rule as promoteToGroup).
+    for (const peerId of peers) {
+      transmitSignal(peerId, { kind: 'promote_to_group', chatId })
+    }
+    const wasVideo = (call.localStream?.getVideoTracks().length ?? 0) > 0
+    severAllLinks()
+    await joinGroupCall(chatId, wasVideo)
   }, [userId, severAllLinks])
 
   // Socket Subscription Layer
@@ -1860,5 +1900,6 @@ export function useWebRTC(userId: string | null) {
     setQuality,
     setCameraEffect,
     promoteToGroup,
+    openCallToGuests,
   }
 }

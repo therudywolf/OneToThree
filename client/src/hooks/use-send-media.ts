@@ -495,7 +495,7 @@ export function useSendMedia(
           { userId: ctx.userId, peerUserId: directPeerUserId ?? null }
         )
 
-        const { uploadUrl, filePath } = await postUploadUrl({
+        const { uploadUrl, filePath, contentType } = await postUploadUrl({
           chatId: ctx.activeChatId,
           fileName: prepared.label,
           fileType: prepared.mimeType,
@@ -505,7 +505,7 @@ export function useSendMedia(
           `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           prepared.label,
           uploadUrl,
-          prepared.mimeType,
+          contentType ?? prepared.mimeType,
           prepared.uploadPayload
         )
 
@@ -629,7 +629,7 @@ export function useSendMedia(
         // Upload all payloads in parallel.
         const uploaded = await Promise.all(
           prepared.map(async (p) => {
-            const { uploadUrl, filePath } = await postUploadUrl({
+            const { uploadUrl, filePath, contentType } = await postUploadUrl({
               chatId: ctx.activeChatId,
               fileName: p.label,
               fileType: p.mimeType,
@@ -639,7 +639,7 @@ export function useSendMedia(
               `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               p.label,
               uploadUrl,
-              p.mimeType,
+              contentType ?? p.mimeType,
               p.uploadPayload
             )
             return { ...p, filePath }

@@ -24,11 +24,13 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   resolveGuestToken,
+  resolveGuestLinkTarget,
   guestKnock,
   pollGuestKnock,
   cancelGuestKnock,
   type GuestKnockCreated,
   type GuestKnockStatus,
+  type GuestLinkTarget,
 } from '@/lib/api/guest'
 import {
   CenterCard,
@@ -71,6 +73,15 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
 
   const [stage, setStage] = useState<Stage>({ kind: 'loading' })
   const [hostName, setHostName] = useState('')
+  /**
+   * Who this visitor already is here, if anyone (#6).
+   *
+   * A guest link used to have exactly one door — invent a name and knock — even
+   * for someone who is already signed in on this very browser. Probed
+   * speculatively; `null` (no session, or an older server) simply means the
+   * page keeps its old single door.
+   */
+  const [me, setMe] = useState<GuestLinkTarget | null>(null)
   const [nickname, setNickname] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -107,6 +118,23 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
           return
         }
         setHostName(info.host_name)
+        // Signed-in visitor? A member of the target chat can walk straight into
+        // the full app call — knocking at your own meeting behind a nickname is
+        // the thing this whole screen should never have asked of them.
+        const mine = await resolveGuestLinkTarget(token)
+        if (!alive) return
+        if (mine?.member && (mine.chat_id || mine.room_id)) {
+          router.replace(
+            mine.chat_id
+              ? `/?chat=${encodeURIComponent(mine.chat_id)}`
+              : `/?meet=${encodeURIComponent(mine.room_id!)}`
+          )
+          return
+        }
+        if (mine) {
+          setMe(mine)
+          setNickname((prev) => prev || mine.username)
+        }
         setStage({ kind: 'form' })
       } catch (err) {
         if (!alive) return
@@ -297,6 +325,42 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
           {t('gs.meetingWithHost').replace('{host}', hostName)}
         </h1>
         <p className="mt-1 text-sm text-text-muted">{t('gs.introduceKnock')}</p>
+        {/* #6 — a visitor who already has an account here was still asked to
+            invent an identity. They still knock (the host approves everyone),
+            but under the name the host will actually recognise. */}
+        {me ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border-strong bg-surface-elevated/60 px-3 py-2">
+            <span className="text-xs text-text-muted">
+              {t('gs.signedInAs').replace('{name}', me.username)}
+            </span>
+            <div className="ml-auto flex gap-1">
+              <button
+                type="button"
+                onClick={() => { setNickname(me.username); setFormError(null) }}
+                aria-pressed={nickname === me.username}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  nickname === me.username
+                    ? 'bg-on-surface text-void'
+                    : 'border border-border-strong text-text-muted hover:bg-[var(--state-hover)]'
+                }`}
+              >
+                {t('gs.joinAsAccount')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setNickname(''); setFormError(null) }}
+                aria-pressed={nickname !== me.username}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  nickname !== me.username
+                    ? 'bg-on-surface text-void'
+                    : 'border border-border-strong text-text-muted hover:bg-[var(--state-hover)]'
+                }`}
+              >
+                {t('gs.joinAnonymously')}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {/* Camera and microphone are checked BEFORE the knock: the host is
             about to be interrupted, and discovering a dead microphone after
             they let you in wastes their time, not just yours. */}
@@ -317,7 +381,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
                 setFormError(null)
               }}
               maxLength={32}
-              autoFocus
+              autoFocus={!me}
               placeholder={t('gs.namePlaceholder')}
               className="w-full rounded-lg border border-border-strong bg-void px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
             />

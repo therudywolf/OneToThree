@@ -164,6 +164,58 @@ export function meetingHref(invite: GuestInvite): string | null {
   return null
 }
 
+/**
+ * Signed-in view of where a guest link goes (#6).
+ *
+ * `member: true` means this account can open the target directly — it is a
+ * member of that chat, or it created a standalone meeting. Everyone else is
+ * told nothing but "no", and knocks like any other guest.
+ *
+ * Never throws for the not-signed-in case: the guest pages call this
+ * speculatively on load, and "no session" is the normal answer, not an error.
+ */
+export type GuestLinkTarget = {
+  kind: 'call' | 'chat'
+  /** The CALLER's own username — what "войти как …" is offered under. */
+  username: string
+  member: boolean
+  chat_id?: string
+  room_id?: string
+}
+
+export async function resolveGuestLinkTarget(
+  token: string
+): Promise<GuestLinkTarget | null> {
+  try {
+    const res = await fetchWithTimeout(`${API_URL}/guest/link-target`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as GuestLinkTarget
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Open the temp chat as the account you already have, instead of minting a
+ * throwaway guest one (#6). Returns the direct chat's id.
+ */
+export async function guestEnterAsMe(
+  token: string
+): Promise<{ chat_id: string; existing: boolean }> {
+  const res = await fetchWithTimeout(`${API_URL}/guest/enter-as-me`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  return jsonOrThrow<{ chat_id: string; existing: boolean }>(res, 'ENTER_AS_ME_FAILED')
+}
+
 export async function listGuestInvites(): Promise<GuestInvite[]> {
   const res = await fetchWithTimeout(`${API_URL}/guest-invites`, {
     credentials: 'include',

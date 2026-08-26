@@ -24,6 +24,7 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, chats, guestInvites, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { findExistingDirectE2EBetween } from './chats.js'
 import { readSecret } from '../lib/read-secret.js'
 import { getCallMediaMode } from '../lib/call-media-mode.js'
 import { resolveCallTokenTtlSeconds } from './call.js'
@@ -238,7 +239,12 @@ async function notifyKnock(
       type: 'guest_knock' as const,
       title: `🚪 ${payload.nickname}`,
       body: 'Гость стучится во встречу — откройте, чтобы впустить',
-      url: payload.chat_id ? `/?chat=${payload.chat_id}` : '/',
+      // A standalone meeting has no chat to open — send the host to the ROOM,
+      // or tapping the push landed them on the app root while the guest they
+      // just let in waited in an empty meeting.
+      url: payload.chat_id
+        ? `/?chat=${payload.chat_id}`
+        : `/?meet=${encodeURIComponent(payload.room_id)}`,
       icon: '/icon-192.png',
       ...(payload.chat_id ? { chat_id: payload.chat_id } : {}),
     }
@@ -540,6 +546,143 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
   }
 
   // ── Authenticated surface (creator side + guest self-destruct) ────────────
+
+  /**
+   * "I already have an account here — where does this link actually go?" (#6)
+   *
+   * The public /guest/resolve deliberately never names the chat or room a token
+   * points at; it answers strangers. This one answers a SIGNED-IN user, and it
+   * discloses the id only when disclosing it tells them nothing they do not
+   * already have: they are a member of that chat, or they minted the link
+   * themselves. Everyone else gets `member: false` and the knock they would
+   * have had anyway.
+   *
+   * What it buys: a chat member who is handed the meeting link stops having to
+   * knock at their own meeting behind a made-up nickname, and lands in the full
+   * app call instead of the stripped-down guest stage.
+   */
+  app.post('/guest/link-target', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    if (user.group === 'guest') return reply.status(403).send({ error: 'GUEST_FORBIDDEN' })
+
+    const parsed = tokenOnlySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const invite = await findUnexpiredInviteByToken(parsed.data.token)
+    if (!invite) return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
+
+    const isCreator = invite.createdBy === user.id
+    if (invite.chatId) {
+      const [membership] = await db
+        .select({ chatId: chatMembers.chatId })
+        .from(chatMembers)
+        .where(and(eq(chatMembers.chatId, invite.chatId), eq(chatMembers.userId, user.id)))
+        .limit(1)
+      if (membership) {
+        return reply.send({
+          kind: invite.purpose,
+          username: user.username,
+          member: true,
+          chat_id: invite.chatId,
+        })
+      }
+    } else if (invite.roomId && isCreator) {
+      // A standalone meeting has no members; its creator is the one person who
+      // is unambiguously entitled to walk straight back into it.
+      return reply.send({
+        kind: invite.purpose,
+        username: user.username,
+        member: true,
+        room_id: invite.roomId,
+      })
+    }
+    // The username is the caller's own — it is what the page needs to offer
+    // "войти как <you>" instead of asking a registered user to invent a name.
+    return reply.send({ kind: invite.purpose, username: user.username, member: false })
+  })
+
+  /**
+   * Mechanism B, for someone who already HAS an account (#6).
+   *
+   * A temp-chat link used to have exactly one door: mint a throwaway `users`
+   * row, log in as it, and live in a tab that dies on refresh. Handing that to
+   * a person who is already registered here is absurd — they have keys, a
+   * name, and a device the host may already know. This is the other door: no
+   * guest account, no expiry, just the direct chat the two of them would have
+   * had anyway.
+   *
+   * Idempotent by construction. If a direct chat between these two already
+   * exists it is RETURNED WITHOUT BURNING A SEAT — the link's one seat is for
+   * admitting a stranger, and re-opening a conversation you already have is
+   * not that. Which also means following the same link twice cannot lock you
+   * out of your own chat.
+   */
+  app.post('/guest/enter-as-me', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    // A guest account following a second link would chain guest→guest chats
+    // and side-step the seat accounting; it also has no identity worth keeping.
+    if (user.group === 'guest') return reply.status(403).send({ error: 'GUEST_FORBIDDEN' })
+
+    const parsed = tokenOnlySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const invite = await findLiveInviteByToken(parsed.data.token)
+    if (!invite || invite.purpose !== 'chat') {
+      return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
+    }
+    if (invite.createdBy === user.id) {
+      return reply.status(400).send({ error: 'OWN_LINK' })
+    }
+
+    const existing = await findExistingDirectE2EBetween(invite.createdBy, user.id)
+    if (existing) {
+      return reply.send({ chat_id: existing.id, existing: true })
+    }
+
+    if (!(await consumeInviteSeat(invite.id))) {
+      return reply.status(409).send({ error: 'INVITE_FULL' })
+    }
+
+    let chatId: string
+    try {
+      chatId = await db.transaction(async (tx) => {
+        const [chatRow] = await tx
+          .insert(chats)
+          .values({ type: 'direct_e2e', name: null })
+          .returning({ id: chats.id })
+        if (!chatRow) throw new Error('INSERT_CHAT_FAILED')
+        await tx.insert(chatMembers).values([
+          { chatId: chatRow.id, userId: invite.createdBy, encryptedGroupKey: null, role: 'member' as const },
+          { chatId: chatRow.id, userId: user.id, encryptedGroupKey: null, role: 'member' as const },
+        ])
+        return chatRow.id
+      })
+    } catch (err) {
+      request.log.error({ err, inviteId: invite.id }, 'guest: enter-as-me chat create failed')
+      return reply.status(500).send({ error: 'CHAT_CREATE_FAILED' })
+    }
+
+    // Both sides need the new chat: the creator to see it appear, the joiner
+    // because their own list was fetched before it existed.
+    broadcastToUsers([invite.createdBy, user.id], { type: 'chats_updated' })
+    const online = await areOnline([invite.createdBy])
+    if (!online.get(invite.createdBy)) {
+      const push = {
+        type: 'guest_knock' as const,
+        title: `💬 ${user.username}`,
+        body: 'Перешёл по вашей ссылке и открыл чат',
+        url: `/?chat=${chatId}`,
+        icon: '/icon-192.png',
+        chat_id: chatId,
+      }
+      sendPushToUser(invite.createdBy, push).catch(() => {})
+      sendNativePushToUser(invite.createdBy, push).catch(() => {})
+    }
+
+    return reply.send({ chat_id: chatId, existing: false })
+  })
 
   /** Create a one-time guest link. */
   app.post('/guest-invites', async (request, reply) => {

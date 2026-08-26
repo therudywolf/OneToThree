@@ -20,8 +20,12 @@ import { describe, expect, it } from 'vitest'
 
 const stage = readFileSync(join(__dirname, 'livekit-room-stage.tsx'), 'utf8')
 
+// `\r?\n`, not `\n`: this greps the file as it sits in the WORKING TREE, and any
+// tool that rewrites it with CRLF (Python's text mode on Windows does, though
+// the repo's .gitattributes says it must not) made every assertion below fail
+// with "expected '' to contain …" — a message that says nothing about newlines.
 const kickGuest =
-  stage.match(/const kickGuest = useCallback\([\s\S]*?\n {2}\)\n/)?.[0] ?? ''
+  stage.match(/const kickGuest = useCallback\([\s\S]*?\r?\n {2}\)\r?\n/)?.[0] ?? ''
 
 describe('meeting stage — kick feedback', () => {
   it('has a kickGuest handler to inspect', () => {

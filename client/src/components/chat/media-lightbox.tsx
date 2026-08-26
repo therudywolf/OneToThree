@@ -256,6 +256,8 @@ export function MediaLightbox({
   const hasPrev = media.slice(0, currentIndex).some(m => m && (!!m.url || !!onLoadMedia))
   const hasNext = media.slice(currentIndex + 1).some(m => m && (!!m.url || !!onLoadMedia))
   const hasMultiple = hasPrev || hasNext
+  /** Dot pagination for short albums; also reserves the strip they sit in. */
+  const showDots = media.length > 1 && media.length <= 10
 
   return (
     <div
@@ -298,8 +300,13 @@ export function MediaLightbox({
         </>
       )}
 
-      {/* Zoom controls */}
-      <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+      {/* Zoom controls.
+          TOP-left, not bottom-centre. Two things live along the bottom edge of
+          this dialog and both were underneath these buttons: a <video>'s own
+          native control strip (scrub, volume, fullscreen — unreachable through
+          them), and the album dots, which were positioned at the very same
+          `bottom-4 left-1/2` and simply stacked on top. */}
+      <div className="absolute left-4 top-4 z-10 flex gap-2">
         <button
           onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
           disabled={zoom <= 1}
@@ -327,13 +334,13 @@ export function MediaLightbox({
 
       {/* Media counter */}
       {media.length > 1 && (
-        <div className="absolute bottom-4 right-4 z-10 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 bg-void/50 px-2 py-1 border border-neon-cyan/20">
+        <div className="absolute left-4 top-16 z-10 border border-neon-cyan/20 bg-void/50 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80">
           {currentIndex + 1} / {media.length}
         </div>
       )}
 
       {/* Sprint M1-7 — dot pagination, only for short albums (≤10) to avoid visual clutter. */}
-      {media.length > 1 && media.length <= 10 && (
+      {showDots && (
         <div
           className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-1.5 rounded-full bg-void/40 px-2 py-1 backdrop-blur"
           role="tablist"
@@ -371,7 +378,11 @@ export function MediaLightbox({
 
       {/* Media content */}
       <div
-        className="relative flex h-full w-full items-center justify-center overflow-hidden p-4"
+        className={`relative flex h-full w-full items-center justify-center overflow-hidden p-4 ${
+          // Album dots sit along the bottom edge; without the reserved strip a
+          // full-height video ends with its controls behind them.
+          showDots ? 'pb-14' : ''
+        }`}
         onClick={zoom <= 1 ? onClose : undefined}
         onWheel={handleWheel}
       >

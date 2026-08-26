@@ -204,6 +204,8 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const cachedBlobRef = useRef<Blob | null>(null)
   const [videoNoteExpanded, setVideoNoteExpanded] = useState(false)
+  /** Shape of the inline player: 16/9 until the metadata says otherwise. */
+  const [videoAspect, setVideoAspect] = useState('16 / 9')
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [visible, setVisible] = useState(false)
   const [serverEvicted, setServerEvicted] = useState(false)
@@ -842,18 +844,32 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
     return (
       <div>
-        <div className="p13-video-card mt-2 max-w-md p-1" style={{ aspectRatio: '16/9' }}>
+        {/* The frame is a frame and nothing more. It used to force 16/9 on the
+            CARD *and* pad it by 4px, while the <video> inside forced 16/9 on
+            itself at full width — so the player was always taller than the box
+            holding it and spilled over its own border. The card now takes the
+            player's height; the player carries the aspect ratio, its real one
+            once the metadata says what it is, so a portrait clip is not letter-
+            boxed into a widescreen slot and nothing reflows when it loads. */}
+        <div className="p13-video-card mt-2 max-w-md overflow-hidden">
           {/* Real inline player: native controls (usable — no click-to-lightbox
               fighting them) and unmuted so it has sound. Fullscreen is a separate
               explicit button below (issue #14). */}
           <video
             ref={videoRef}
             src={objectUrl}
-            className="aspect-video w-full bg-void object-contain"
+            className="block max-h-[70vh] w-full bg-void object-contain"
+            style={{ aspectRatio: videoAspect }}
             playsInline
             autoPlay={false}
             controls
             preload="metadata"
+            onLoadedMetadata={(e) => {
+              const el = e.currentTarget
+              if (el.videoWidth > 0 && el.videoHeight > 0) {
+                setVideoAspect(`${el.videoWidth} / ${el.videoHeight}`)
+              }
+            }}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
           />

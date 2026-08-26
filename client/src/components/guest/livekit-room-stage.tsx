@@ -23,6 +23,7 @@
  */
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -53,6 +54,9 @@ import { CenterCard, Spinner } from '@/components/guest/center-card'
 export { CenterCard, Spinner }
 import {
   applyPreferredAudioOutput,
+  applyScreenTrackSettings,
+  getDisplayMediaOptions,
+  getScreenShareMaxBitrateBps,
   loadCamEffectImage,
   loadMediaPrefs,
   MEDIA_PREFS_CHANGED_EVENT,
@@ -111,6 +115,17 @@ function CamIcon({ off }: { off: boolean }) {
   )
 }
 
+function ScreenIcon({ off }: { off: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="2" y="4" width="20" height="13" rx="2" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+      {off ? <path d="M3 3l18 18" /> : null}
+    </svg>
+  )
+}
+
 function GearIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -154,9 +169,12 @@ function AudioSink({ track }: { track: RemoteTrack }) {
 
 function ParticipantTile({
   participant,
+  variant = 'camera',
   onKick,
 }: {
   participant: RemoteParticipant
+  /** Which of the participant's video sources this tile shows. */
+  variant?: 'camera' | 'screen'
   /** Present only for a host who may remove guests. */
   onKick?: (identity: string, name: string) => void
 }) {
@@ -164,20 +182,25 @@ function ParticipantTile({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const lk = lkModule
 
-  // Screen share wins the tile's video slot (it's the thing being shown);
-  // otherwise the camera. All subscribed audio goes to hidden <audio> sinks.
-  let videoPub: RemoteTrackPublication | undefined
+  // One tile per VIDEO SOURCE, not one per participant. A screen share used to
+  // simply win the slot, so someone presenting with their camera on vanished
+  // from the room they were presenting to — and the app's own call screens have
+  // shown the two side by side since dual capture landed.
+  let cameraPub: RemoteTrackPublication | undefined
+  let screenPub: RemoteTrackPublication | undefined
   for (const pub of participant.videoTrackPublications.values()) {
     if (!pub.track) continue
-    if (lk && pub.source === lk.Track.Source.ScreenShare) {
-      videoPub = pub
-      break
-    }
-    if (!videoPub) videoPub = pub
+    if (lk && pub.source === lk.Track.Source.ScreenShare) screenPub ??= pub
+    else cameraPub ??= pub
   }
+  const videoPub = variant === 'screen' ? screenPub : cameraPub
+  // Audio belongs to the participant, not to a tile: rendering the sinks under
+  // both tiles would play every remote voice twice.
   const audioTracks: { sid: string; track: RemoteTrack }[] = []
-  for (const pub of participant.audioTrackPublications.values()) {
-    if (pub.track) audioTracks.push({ sid: pub.trackSid, track: pub.track })
+  if (variant !== 'screen') {
+    for (const pub of participant.audioTrackPublications.values()) {
+      if (pub.track) audioTracks.push({ sid: pub.trackSid, track: pub.track })
+    }
   }
 
   const videoTrack = videoPub?.track
@@ -190,14 +213,21 @@ function ParticipantTile({
     }
   }, [videoTrack])
 
+  const isScreen = variant === 'screen'
   const name = displayName(participant)
   const guest = isGuestParticipant(participant.metadata)
   const micOff = !participant.isMicrophoneEnabled
 
+  if (isScreen && !videoTrack) return null
+
   return (
     <div
-      className={`relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border bg-surface-elevated ${
-        participant.isSpeaking ? 'border-success' : 'border-border-strong'
+      className={`relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border ${
+        isScreen
+          ? 'border-neon-cyan/50 bg-void'
+          : participant.isSpeaking
+            ? 'border-success bg-surface-elevated'
+            : 'border-border-strong bg-surface-elevated'
       }`}
     >
       {videoTrack ? (
@@ -217,18 +247,21 @@ function ParticipantTile({
       ))}
       <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-void/70 px-2 py-1 text-xs">
         <span className="max-w-[10rem] truncate">{name}</span>
+        {isScreen ? (
+          <span className="text-neon-cyan">{t('call.screenSharing')}</span>
+        ) : null}
         {guest ? (
           <span className="rounded bg-neon-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-neon-amber">
             {t('guest.badge')}
           </span>
         ) : null}
-        {micOff ? (
+        {micOff && !isScreen ? (
           <span className="text-text-muted">
             <MicIcon off />
           </span>
         ) : null}
       </div>
-      {guest && onKick ? (
+      {guest && onKick && !isScreen ? (
         <button
           type="button"
           onClick={() => onKick(participant.identity, name)}
@@ -282,6 +315,9 @@ export function LiveKitRoomStage({
   const [micEnabled, setMicEnabled] = useState(false)
   const [camOn, setCamOn] = useState(false)
   const [camBusy, setCamBusy] = useState(false)
+  /** Screen share, WITH its audio (#4) — the temp call had neither. */
+  const [screenOn, setScreenOn] = useState(false)
+  const [screenBusy, setScreenBusy] = useState(false)
   const [e2eeActive, setE2eeActive] = useState(false)
   const [kicking, setKicking] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -296,6 +332,9 @@ export function LiveKitRoomStage({
   const camRawRef = useRef<MediaStreamTrack | null>(null)
   const camTrackRef = useRef<MediaStreamTrack | null>(null)
   const camFxRef = useRef<CameraEffectsHandle | null>(null)
+  const screenTrackRef = useRef<MediaStreamTrack | null>(null)
+  const screenAudioTrackRef = useRef<MediaStreamTrack | null>(null)
+  const screenVideoElRef = useRef<HTMLVideoElement | null>(null)
   const leavingRef = useRef(false)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   // The join runs once per grant; callbacks are read through refs so a parent
@@ -507,6 +546,84 @@ export function LiveKitRoomStage({
     setCamOn(true)
   }, [])
 
+  /**
+   * Screen share for the temp call (#4).
+   *
+   * The stripped-down stage could show a face and nothing else — a meeting
+   * where you cannot show what you are talking about is half a meeting, and
+   * "captured the call with sound" was flatly impossible.
+   *
+   * Published by hand rather than through `setScreenShareEnabled` so the app's
+   * own preferences apply — resolution, frame rate, and system audio, which is
+   * the half that was missing. The audio track goes up as its own
+   * ScreenShareAudio publication (LiveKit routes it separately) and the encoder
+   * gets the budget the chosen preset actually needs; the default ~2.5 Mbps is
+   * not a 1080p60 desktop.
+   */
+  const stopScreenShare = useCallback(async () => {
+    const room = roomRef.current
+    for (const ref of [screenTrackRef, screenAudioTrackRef]) {
+      const track = ref.current
+      ref.current = null
+      if (!track) continue
+      try {
+        await room?.localParticipant.unpublishTrack(track)
+      } catch {
+        /* already gone with the room — stopping the track is what matters */
+      }
+      track.stop()
+    }
+    setScreenOn(false)
+  }, [])
+
+  const startScreenShare = useCallback(async () => {
+    const room = roomRef.current
+    const lk = lkModule
+    if (!room || !lk) return
+    const stream = await navigator.mediaDevices.getDisplayMedia(getDisplayMediaOptions())
+    const video = stream.getVideoTracks()[0] ?? null
+    const audio = stream.getAudioTracks()[0] ?? null
+    if (!video) {
+      stream.getTracks().forEach((tr) => tr.stop())
+      return
+    }
+    applyScreenTrackSettings(video)
+    const prefs = loadMediaPrefs()
+    await room.localParticipant.publishTrack(video, {
+      source: lk.Track.Source.ScreenShare,
+      videoEncoding: {
+        maxBitrate: getScreenShareMaxBitrateBps(prefs.screenRes, prefs.screenFps),
+        maxFramerate: prefs.screenFps === 'source' ? undefined : Number(prefs.screenFps),
+      },
+    })
+    screenTrackRef.current = video
+    if (audio) {
+      await room.localParticipant.publishTrack(audio, {
+        source: lk.Track.Source.ScreenShareAudio,
+      })
+      screenAudioTrackRef.current = audio
+    }
+    // "Stop sharing" from the browser's own control must not leave a dead
+    // publication behind — the tile would sit there frozen for everyone else.
+    video.onended = () => { void stopScreenShare() }
+    setScreenOn(true)
+  }, [stopScreenShare])
+
+  const toggleScreen = useCallback(async () => {
+    if (screenBusy) return
+    setScreenBusy(true)
+    try {
+      if (screenTrackRef.current) await stopScreenShare()
+      else await startScreenShare()
+    } catch (err) {
+      // A dismissed picker is a decision, not a failure.
+      if ((err as Error)?.name !== 'NotAllowedError') toastError(t('call.screenShareFailed'))
+      await stopScreenShare()
+    } finally {
+      setScreenBusy(false)
+    }
+  }, [screenBusy, startScreenShare, stopScreenShare, t])
+
   const toggleCam = useCallback(async () => {
     const room = roomRef.current
     const lk = lkModule
@@ -619,6 +736,13 @@ export function LiveKitRoomStage({
     camTrackRef.current?.stop()
     camTrackRef.current = null
     setCamOn(false)
+    // The screen capture is hardware too — a share left running past the call
+    // keeps the browser's "you are sharing" bar up over an empty room.
+    screenTrackRef.current?.stop()
+    screenTrackRef.current = null
+    screenAudioTrackRef.current?.stop()
+    screenAudioTrackRef.current = null
+    setScreenOn(false)
     const room = roomRef.current
     roomRef.current = null
     if (room) {
@@ -669,6 +793,20 @@ export function LiveKitRoomStage({
     }
   }, [camOn, camBusy])
 
+  // Local screen preview. Same reasoning as the camera one: the published track
+  // is a plain MediaStreamTrack, so it is wired by srcObject.
+  useEffect(() => {
+    if (!screenOn) return
+    const el = screenVideoElRef.current
+    const track = screenTrackRef.current
+    if (!el || !track) return
+    el.srcObject = new MediaStream([track])
+    void el.play().catch(() => {})
+    return () => {
+      el.srcObject = null
+    }
+  }, [screenOn])
+
   if (!connected) {
     return (
       <CenterCard>
@@ -711,16 +849,36 @@ export function LiveKitRoomStage({
         ) : null}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
           {remotes.map((p) => (
-            <ParticipantTile
-              key={p.identity}
-              participant={p}
-              onKick={
-                onKickGuest && kicking !== p.identity
-                  ? (identity, name) => void kickGuest(identity, name)
-                  : undefined
-              }
-            />
+            <Fragment key={p.identity}>
+              <ParticipantTile
+                participant={p}
+                onKick={
+                  onKickGuest && kicking !== p.identity
+                    ? (identity, name) => void kickGuest(identity, name)
+                    : undefined
+                }
+              />
+              {/* Renders nothing unless this participant is actually sharing. */}
+              <ParticipantTile participant={p} variant="screen" />
+            </Fragment>
           ))}
+          {/* Own screen share: a tile of its own, next to the camera one, the
+              way the app's call screens show it. Without it the sharer is the
+              only person in the room who cannot see what they are sharing. */}
+          {screenOn ? (
+            <div className="relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border border-neon-cyan/50 bg-void">
+              <video
+                ref={screenVideoElRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-contain"
+              />
+              <div className="absolute bottom-2 left-2 rounded-md bg-void/70 px-2 py-1 text-xs text-neon-cyan">
+                {t('call.screenSharing')}
+              </div>
+            </div>
+          ) : null}
           {/* Local tile: preview when the camera is on, avatar otherwise. */}
           <div className="relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border border-border-strong bg-surface-elevated">
             {camOn ? (
@@ -778,6 +936,19 @@ export function LiveKitRoomStage({
           }`}
         >
           <CamIcon off={!camOn} />
+        </button>
+        <button
+          type="button"
+          onClick={() => void toggleScreen()}
+          disabled={screenBusy}
+          title={screenOn ? t('meet.screenOff') : t('meet.screenOn')}
+          className={`flex h-11 w-11 items-center justify-center rounded-full transition disabled:opacity-50 ${
+            screenOn
+              ? 'bg-neon-cyan/20 text-neon-cyan hover:bg-neon-cyan/30'
+              : 'bg-surface-elevated text-text-primary hover:bg-neon-cyan/10'
+          }`}
+        >
+          <ScreenIcon off={!screenOn} />
         </button>
         <button
           type="button"

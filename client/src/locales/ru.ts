@@ -77,6 +77,9 @@ const ru = {
 
   // [CALL UI]
   'call.screenSharing': 'Демонстрация экрана',
+  'call.screenShareFailed': 'Не удалось начать демонстрацию экрана',
+  'meet.screenOn': 'Показать экран',
+  'meet.screenOff': 'Остановить показ',
   'call.startScreenShare': 'Показать экран',
   'call.stopScreenShare': 'Остановить показ',
   'call.connP2P': 'Прямое P2P',
@@ -129,6 +132,7 @@ const ru = {
   'call.tileFullscreen': 'На весь экран',
   'call.tilePin': 'Закрепить',
   'call.tileUnpin': 'Открепить',
+  'call.settingsTitle': 'Звук и устройства',
   'call.debugTitle': 'Диагностика звонка',
   'call.debugCopy': 'Скопировать диагностику',
   'call.debugNoPeers': 'Нет активных соединений.',

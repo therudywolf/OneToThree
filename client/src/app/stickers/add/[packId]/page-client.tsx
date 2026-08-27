@@ -2,17 +2,28 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/auth-provider'
 import { fetchPackPreview, cloneStickerPack, type PackPreview } from '@/lib/api/stickers'
 import { useTranslation } from '@/hooks/use-translation'
 
 type Phase = 'loading' | 'ready' | 'adding' | 'done' | 'error'
 
-export function StickerAddClient({ packId }: { packId: string }) {
+export function StickerAddClient({ packId: routePackId }: { packId: string }) {
   const { t } = useTranslation()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
+  // The static export ships only /stickers/add/_ — a folder of files cannot
+  // carry a route per pack — so a deep link into the APK or the desktop build
+  // arrives as `?packId=`. Every other token-in-the-path route here already
+  // reads that fallback (/join/[code], /meet/[room], /guest/**); this one did
+  // not, so a shared pack link opened in the app hit the '_' placeholder,
+  // failed the UUID check and showed "pack not found" every time.
+  const packId =
+    routePackId && routePackId !== '_'
+      ? routePackId
+      : (searchParams.get('packId') ?? routePackId)
   const [pack, setPack] = useState<PackPreview | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
   const [errMsg, setErrMsg] = useState('')

@@ -2,7 +2,7 @@
 
 > Self-hosted end-to-end encrypted messenger for private communication.
 
-![Version](https://img.shields.io/badge/version-0.10.0-4c8bf5)
+![Version](https://img.shields.io/badge/version-0.11.0-4c8bf5)
 ![Status](https://img.shields.io/badge/status-beta-f59e0b)
 ![Platforms](https://img.shields.io/badge/platforms-web%20·%20Android%20·%20desktop-8b5cf6)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-22c55e)](LICENSE)
@@ -121,7 +121,7 @@ Prebuilt clients for each release are on **[GitHub Releases](https://github.com/
 | Windows | `OneToThree_<ver>_x64-setup.exe` |
 | Linux (Debian/Ubuntu) | `OneToThree_<ver>_amd64.deb` |
 | Linux (portable) | `OneToThree_<ver>_amd64.AppImage` |
-| macOS | `OneToThree_<ver>_aarch64.dmg` |
+| macOS | not shipped yet — no release has carried a `.dmg` so far; build it yourself on a Mac (`docs/BUILD_MACOS_IOS.md`) |
 
 Each ships a `.sha256` sidecar. **Desktop bundles are not code-signed**, so
 Windows SmartScreen and macOS Gatekeeper will warn on first launch — verify

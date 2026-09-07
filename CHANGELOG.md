@@ -7,6 +7,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### 2026-09-07 — the phone, the key, and the release that never shipped
+
+Three complaints in one sentence — "the mobile UI is terrible, the APK does
+not work, there is no 1Password integration" — and every one had a concrete
+cause.
+
+#### Fixed
+- **The composer fit a 375px phone on paper only.** Five 44–48px icon
+  buttons plus a textarea with an intrinsic `cols=20` width pushed the send
+  button to x=480 on a 375px screen; `body { overflow-x: hidden }` hid the
+  evidence. The wrapper gets `min-w-0`, attach/poll/burn-timer fold into one
+  "+" menu on phones, the composer uses 44px targets there, and the mic and
+  send buttons are rendered one at a time instead of both (Tailwind's
+  `hidden` lost to a display rule on `.p13-icon-btn`).
+- **Calls on a phone:** the 1:1 control bar wraps instead of squeezing 7–8
+  fixed buttons into slivers; the participants/debug side panel (1:1,
+  group, guest meet) is a full-screen sheet below `md` instead of leaving
+  ~56px of video.
+- `select` joins the 16px rule, so settings dropdowns stop zooming iOS
+  Safari. The bottom tab bar hides inside an open conversation.
+- **Native builds showed a permanent, useless update banner.** The bundle
+  bakes `0.10.0`, the server stamps `0.10.0+<sha>`; they could never match,
+  and the button reloaded the immutable bundle. Native clients now compare
+  the release part only and link to the download page; "later" is
+  remembered per release.
+- **Sign-in on a new device told existing users to register.** A correct
+  password with no local key answered "Local data not found. Register on
+  this device." It now explains that the account exists and names the four
+  ways to bring the key here.
+
+#### Added
+- **Key string** (`otk1.…`): the key file's payload as one line for a field
+  in 1Password, Bitwarden, KeePass or a note. Copy it from the
+  post-registration prompt or Settings → export (behind the password gate);
+  paste it on the sign-in screen of a new device. Same security as the file
+  — the password is still required.
+- **Passkey token:** the keyring sealed under a passkey's WebAuthn PRF
+  output (1Password, Bitwarden, iCloud Keychain, Google Password Manager,
+  YubiKey 5). Settings → "Passkey token" enrols one; the no-key sign-in
+  panel offers "Sign in with a passkey token". The server stores only
+  ciphertext and a public key. Browser-only (Chrome 116+, Safari 18+,
+  Firefox 135+); the app keeps the key string and device linking.
+- `scripts/publish-release.sh`: tags `v<VERSION>` at HEAD, writes sha256
+  sidecars, takes notes from this file, opens a **draft** GitHub Release —
+  the manual half of `release.yml` while Actions billing is off.
+- Playwright: an iPhone SE (375px) project and a test that checks the send
+  button's position, not just its size.
+
+#### Changed
+- Version 0.11.0. A rebuild at 0.10.0 would have collided with the shipped
+  APK's `versionCode`.
+- README no longer lists a macOS `.dmg`: no release has ever carried one
+  (the `macos-14` job failed under `fail-fast: false`).
+
 Six weeks of work on the three surfaces people actually spend time in: **calls**
 (rebuilt, with a real media pipeline behind them), **guests** (let someone into a
 meeting or a temporary chat without an account), and **channels** (which finally

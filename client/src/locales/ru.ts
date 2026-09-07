@@ -1458,6 +1458,11 @@ const ru = {
   'guest.linkCopyFailed': 'Не удалось подготовить гостевую ссылку',
   'guest.meetJoinFailed': 'Не удалось открыть встречу',
   'guest.openingMeeting': 'Открываем встречу…',
+  'version.webUpdate': 'Вышла новая сборка приложения.',
+  'version.reload': 'Обновить',
+  'version.nativeUpdate': 'Доступна версия {version}. Обновите приложение, чтобы всё работало как надо.',
+  'version.download': 'Скачать',
+  'version.dismiss': 'Позже',
 } as const;
 
 export default ru;

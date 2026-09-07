@@ -2,7 +2,7 @@
 
 > Самохостируемый мессенджер со сквозным шифрованием для приватного общения.
 
-![Version](https://img.shields.io/badge/version-0.10.0-4c8bf5)
+![Version](https://img.shields.io/badge/version-0.11.0-4c8bf5)
 ![Status](https://img.shields.io/badge/status-beta-f59e0b)
 ![Platforms](https://img.shields.io/badge/platforms-web%20·%20Android%20·%20desktop-8b5cf6)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-22c55e)](LICENSE)
@@ -119,7 +119,7 @@ npm run lite     # выбрать local/domain, отметить функции 
 | Windows | `OneToThree_<ver>_x64-setup.exe` |
 | Linux (Debian/Ubuntu) | `OneToThree_<ver>_amd64.deb` |
 | Linux (портативный) | `OneToThree_<ver>_amd64.AppImage` |
-| macOS | `OneToThree_<ver>_aarch64.dmg` |
+| macOS | пока не выпускался — ни в одном релизе `.dmg` не было; собирается самостоятельно на Mac (`docs/BUILD_MACOS_IOS.md`) |
 
 К каждому — `.sha256`. **Десктопные сборки не подписаны**, поэтому Windows
 SmartScreen и macOS Gatekeeper при первом запуске предупредят — сверь

@@ -119,6 +119,34 @@ You then review the draft, edit the description if needed, and click
 "Publish release". Pre-release tags (anything containing `-`, e.g.
 `v0.5.0-rc1`) are flagged as pre-release automatically.
 
+## Releasing without GitHub Actions
+
+Actions billing is off (owner decision, 2026-05-29), so the tag-triggered
+workflow above never runs. v0.10.0 was the last release it produced, and the
+154 commits that followed — including every fix to the Android and desktop
+builds — reached nobody for two months. This is the path that works today:
+
+1. Bump the version (step 1 above) and commit.
+2. Build the binaries by hand:
+   * Android — `scripts/build-apk.sh release <keystore.jks>` (Docker fallback
+     is automatic; on the prod host see the runbook in
+     `docs/guides/android-release-runbook.md`). Output: `releases/android/`.
+   * Windows / Linux / macOS — on a machine of that OS,
+     `cd desktop/tauri && npx @tauri-apps/cli build --bundles <nsis,msi|deb,appimage|dmg>`,
+     then copy the bundles into `releases/desktop/`. Tauri does not
+     cross-compile; a platform you have no machine for is simply not in the
+     release — say so in the notes rather than promising it in the README.
+3. `scripts/publish-release.sh` — tags `v<VERSION>` at HEAD, writes `.sha256`
+   sidecars, takes the notes from the matching `CHANGELOG.md` section, and
+   opens a **draft** release with everything under `releases/`. Nothing is
+   public until you press Publish (or rerun with `--publish`).
+
+Native clients compare only the release part of the version (`0.11.0`, not
+`0.11.0+<sha>`) and show a download link when the server reports a newer
+release — so a new APK is only announced to users once `VERSION` moves and the
+server is redeployed. Bumping `VERSION` without shipping binaries tells every
+native user to download something that does not exist.
+
 ## Local release builds
 
 Same flow, but signed locally:

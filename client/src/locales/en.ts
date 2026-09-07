@@ -1456,6 +1456,11 @@ const en = {
   'guest.linkCopyFailed': 'Could not prepare the guest link',
   'guest.meetJoinFailed': 'Could not open the meeting',
   'guest.openingMeeting': 'Opening the meeting…',
+  'version.webUpdate': 'A new build of the app is live.',
+  'version.reload': 'Reload',
+  'version.nativeUpdate': 'Version {version} is available. Update the app so everything keeps working.',
+  'version.download': 'Download',
+  'version.dismiss': 'Later',
 } as const;
 
 export default en;

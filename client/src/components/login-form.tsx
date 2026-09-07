@@ -15,6 +15,7 @@ import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { PostRegisterVaultPrompt } from '@/components/post-register-vault-prompt'
 import { explainLoginError } from '@/lib/login-errors'
+import { decodeKeyString, looksLikeKeyString } from '@/lib/vault/key-string'
 import { useThemeStore } from '@/store/themeStore'
 
 /**
@@ -106,6 +107,12 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
   const [infoLog, setInfoLog]           = useState<string | null>(null)
   const [isBusy, setIsBusy]             = useState(false)
   const [vaultLinkOk, setVaultLinkOk]   = useState(false)
+  // Set when sign-in failed ONLY because this device holds no key for the
+  // handle. The account exists; what the user needs is a way to bring the
+  // key here — never a suggestion to register.
+  const [noVaultFor, setNoVaultFor]     = useState<string | null>(null)
+  const [keyStringOpen, setKeyStringOpen] = useState(false)
+  const [keyStringText, setKeyStringText] = useState('')
   const [staleSession, setStaleSession] = useState(false)
   const [showVaultPrompt, setShowVaultPrompt] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -193,16 +200,45 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
     setInfoLog(null)
   }
 
+  /** A key string (`otk1.…`) pasted from a password manager. */
+  const applyKeyString = (text: string): boolean => {
+    setErrorLog(null)
+    const r = decodeKeyString(text)
+    if (!r.ok) {
+      setErrorLog(
+        r.error === 'UNSUPPORTED_VAULT' ? t('login.keyStringTooNew') : t('login.keyStringInvalid'),
+      )
+      return false
+    }
+    const nick = parseNickname(r.payload.username)
+    if (!nick.ok) {
+      setErrorLog(t('login.keyStringInvalid'))
+      return false
+    }
+    persistVaultBlobByLoginUsername(nick.value, r.payload.vault)
+    setHandle(nick.value)
+    setVaultLinkOk(true)
+    setNoVaultFor(null)
+    setKeyStringOpen(false)
+    setKeyStringText('')
+    return true
+  }
+
   const handleVaultImport = () => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.json,.key'
+    input.accept = '.json,.key,.txt'
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
       setErrorLog(null)
       try {
-        const raw = JSON.parse(await file.text()) as {
+        const text = await file.text()
+        if (looksLikeKeyString(text)) {
+          applyKeyString(text)
+          return
+        }
+        const raw = JSON.parse(text) as {
           username?: string | null
           userId?: string | null
           vault?: VaultBlob
@@ -238,6 +274,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
         persistVaultBlobByLoginUsername(nick.value, blob)
         setHandle(nick.value)
         setVaultLinkOk(true)
+        setNoVaultFor(null)
       } catch (e) {
         console.error('[vault-import]', e)
         setErrorLog(t('settings.importFailed') + ': ' + (e instanceof Error ? e.message : String(e)))
@@ -275,6 +312,11 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
       if (!res.ok) {
         if (res.error === 'USERNAME_TAKEN' || res.error === 'PUBLIC_KEY_CONFLICT') {
           setInfoLog(t('login.accountExists'))
+          return
+        }
+        if (res.error === 'NO_LOCAL_VAULT') {
+          setErrorLog(null)
+          setNoVaultFor(handle.trim())
           return
         }
         if (res.error === 'VAULT_ALREADY_EXISTS') {
@@ -785,8 +827,63 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                 </TerminalGlitchButton>
               </div>
 
+              {mode === 'ACCESS' && noVaultFor && (
+                <div
+                  role="status"
+                  data-testid="no-local-vault-panel"
+                  className={`space-y-3 leading-relaxed ${isMd3 ? 'rounded-2xl border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] p-4' : 'border border-neon-cyan/40 bg-neon-cyan/5 p-3'}`}
+                >
+                  <p className={`text-sm font-medium ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>
+                    {t('noLocalVault.title')}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {t('login.noLocalVaultExplain').replace('{handle}', noVaultFor)}
+                  </p>
+                  <ul className="list-disc space-y-1 pl-4 text-xs text-text-muted">
+                    <li>{t('login.noLocalVaultOptKeyString')}</li>
+                    <li>{t('login.noLocalVaultOptFile')}</li>
+                    <li>{t('login.noLocalVaultOptLink')}</li>
+                    <li>{t('login.noLocalVaultOptRecovery')}</li>
+                  </ul>
+                </div>
+              )}
+
               {mode === 'ACCESS' && (
                 <div className="mt-6 border-t border-border-strong pt-6 space-y-3">
+                  <button type="button" onClick={() => { setKeyStringOpen((o) => !o); setErrorLog(null) }}
+                    data-testid="key-string-toggle"
+                    aria-expanded={keyStringOpen}
+                    className={`w-full py-2 text-[9px] uppercase tracking-widest transition-all ${noVaultFor ? 'border border-neon-cyan bg-neon-cyan/10 text-neon-cyan' : 'border border-border-strong bg-void text-text-muted hover:border-neon-cyan hover:text-neon-cyan'}`}>
+                    {t('login.keyStringPaste')}
+                  </button>
+                  {keyStringOpen && (
+                    <div className="space-y-2">
+                      <textarea
+                        id="key-string"
+                        value={keyStringText}
+                        onChange={(e) => setKeyStringText(e.target.value)}
+                        onPaste={(e) => {
+                          const text = e.clipboardData.getData('text')
+                          if (looksLikeKeyString(text)) {
+                            e.preventDefault()
+                            applyKeyString(text)
+                          }
+                        }}
+                        rows={3}
+                        spellCheck={false}
+                        autoComplete="off"
+                        placeholder="otk1.…"
+                        className={`terminal-input w-full resize-none font-mono ${type.hint}`}
+                      />
+                      <p className={`${type.hint} text-text-muted`}>{t('login.keyStringHint')}</p>
+                      <button type="button"
+                        disabled={!keyStringText.trim()}
+                        onClick={() => applyKeyString(keyStringText)}
+                        className="w-full border border-neon-cyan bg-void py-2 text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-all">
+                        {t('login.keyStringApply')}
+                      </button>
+                    </div>
+                  )}
                   <button type="button" onClick={handleVaultImport}
                     className="w-full border border-border-strong bg-void py-2 text-[9px] uppercase tracking-widest text-text-muted hover:border-neon-cyan hover:text-neon-cyan transition-all">
                     {t('login.vaultRecoveryImport')}

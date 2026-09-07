@@ -515,7 +515,7 @@ export function GroupCallScreen({
           </div>
 
           {(showParticipantPanel || showDebug || showSettings) && (
-            <aside className="w-[300px] max-w-[85vw] shrink-0 border-l border-border-strong">
+            <aside className="fixed inset-0 z-30 flex flex-col bg-void md:static md:inset-auto md:z-auto md:w-[300px] md:max-w-[85vw] md:shrink-0 md:border-l md:border-border-strong">
               {showSettings ? (
                 <CallSettingsPanel
                   onClose={() => setShowSettings(false)}

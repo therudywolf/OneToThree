@@ -442,6 +442,7 @@ const en = {
   'chat.newChat': 'Start a group',
   'chat.startChatHint': 'Message someone by typing their name below, or start a group.',
   'chat.attachFile': 'Attach file',
+  'chat.moreActions': 'More: poll, burn timer',
   'chat.inbox': 'Inbox',
   'chat.mentions': 'Mentions',
   'chat.lockVault': 'Lock vault',

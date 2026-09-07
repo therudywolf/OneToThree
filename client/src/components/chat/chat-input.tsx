@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Flame, BarChart2 } from 'lucide-react'
+import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Flame, BarChart2, Plus } from 'lucide-react'
 import { FormatToolbar } from '@/components/chat/format-toolbar'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -102,6 +102,11 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
   const [burnTimerSecs, setBurnTimerSecs] = useState<number | null>(null)
   const [burnMenuOpen, setBurnMenuOpen] = useState(false)
   const burnMenuRef = useRef<HTMLDivElement>(null)
+  // Phone-width composer: poll + burn timer fold into one "+" menu so the
+  // text field keeps a usable width (five 44px buttons in a 375px row left
+  // the send button off-screen).
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const mobileMoreRef = useRef<HTMLDivElement>(null)
 
   const isRecordingRef = useRef(false)
   const [isRecordingUI, setIsRecordingUI] = useState(false)
@@ -257,6 +262,20 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [burnMenuOpen])
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return
+    const close = (e: MouseEvent | TouchEvent) => {
+      if (mobileMoreRef.current?.contains(e.target as Node)) return
+      setMobileMoreOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('touchstart', close)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('touchstart', close)
+    }
+  }, [mobileMoreOpen])
 
   // ESC closes the poll composer modal (matches the shared modal convention —
   // every dialog in the app is dismissible with Escape).
@@ -922,9 +941,52 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
           </div>
         ) : null}
 
-        {/* Poll composer button */}
+        {/* "+" menu — phone widths only: poll + burn timer live here */}
         {!isRecordingUI ? (
-          <div className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
+          <div ref={mobileMoreRef} className={`relative shrink-0 sm:hidden ${isMd3 ? 'order-1' : ''}`}>
+            <button
+              type="button"
+              className={`p13-icon-btn ${burnTimerSecs ? 'text-warning' : ''}`}
+              disabled={disabled}
+              onClick={() => setMobileMoreOpen((o) => !o)}
+              aria-label={t('chat.moreActions')}
+              title={t('chat.moreActions')}
+              aria-expanded={mobileMoreOpen}
+            >
+              <Plus className={`h-4 w-4 transition-transform ${mobileMoreOpen ? 'rotate-45' : ''}`} />
+            </button>
+            {mobileMoreOpen ? (
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-xl">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-3 text-left text-sm text-[color:var(--on-surface)]"
+                  onClick={() => { setMobileMoreOpen(false); setPollQuestion(''); setPollOptions(['', '']); setPollMultiple(false); setPollAnon(false); setPollModalOpen(true) }}
+                >
+                  <BarChart2 className="h-4 w-4 shrink-0" />
+                  {t('poll.create')}
+                </button>
+                <div className="border-t border-[color:var(--border)] px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+                  {t('chat.burnTimerLabel')}
+                </div>
+                {BURN_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.labelKey}
+                    type="button"
+                    className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm ${burnTimerSecs === opt.secs ? 'font-semibold text-warning' : 'text-[color:var(--on-surface)]'}`}
+                    onClick={() => { setBurnTimerSecs(opt.secs); setMobileMoreOpen(false) }}
+                  >
+                    {opt.secs ? <Flame className="h-3.5 w-3.5 shrink-0 text-warning" /> : <span className="h-3.5 w-3.5 shrink-0" />}
+                    {t(opt.labelKey as Parameters<typeof t>[0])}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Poll composer button (sm+; folded into "+" on phones) */}
+        {!isRecordingUI ? (
+          <div className={`relative hidden shrink-0 sm:block ${isMd3 ? 'order-1' : ''}`}>
             <button
               type="button"
               className="p13-icon-btn"
@@ -1063,7 +1125,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
 
         {/* Burn timer picker */}
         {!isRecordingUI ? (
-          <div ref={burnMenuRef} className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
+          <div ref={burnMenuRef} className={`relative hidden shrink-0 sm:block ${isMd3 ? 'order-1' : ''}`}>
             <button
               type="button"
               className={`p13-icon-btn ${burnTimerSecs ? 'text-warning' : ''}`}
@@ -1100,7 +1162,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
         ) : null}
 
         {/* Input field */}
-        <div className={`relative flex-1 ${isMd3 ? 'order-2' : ''}`}>
+        <div className={`relative min-w-0 flex-1 ${isMd3 ? 'order-2' : ''}`}>
           <FormatToolbar
             visible={formatToolbar.visible}
             position={{ top: formatToolbar.top, left: formatToolbar.left }}
@@ -1122,7 +1184,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
             <textarea
               ref={inputRef}
               rows={1}
-              className="flex-1 min-h-6 max-h-[120px] resize-none bg-transparent border-0 outline-none text-[color:var(--on-surface)] placeholder:text-[color:var(--text-muted)] disabled:cursor-not-allowed"
+              className="w-full min-w-0 flex-1 min-h-6 max-h-[120px] resize-none bg-transparent border-0 outline-none text-[color:var(--on-surface)] placeholder:text-[color:var(--text-muted)] disabled:cursor-not-allowed"
               style={{ fontSize: 'max(16px, 1em)' }}
               value={messageText}
               inputMode="text"

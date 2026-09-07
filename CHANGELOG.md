@@ -56,6 +56,10 @@ cause.
   button's position, not just its size.
 
 #### Changed
+- **New Android signing key.** The v0.10.0 key existed only as a GitHub
+  secret nothing could read back; the release key now lives on the prod host
+  (mirrored into the secrets) and `assetlinks.json` carries its fingerprint.
+  A v0.10.0 install must be uninstalled before 0.11.0 goes on.
 - Version 0.11.0. A rebuild at 0.10.0 would have collided with the shipped
   APK's `versionCode`.
 - README no longer lists a macOS `.dmg`: no release has ever carried one

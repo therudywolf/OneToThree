@@ -131,6 +131,29 @@ builds — reached nobody for two months. This is the path that works today:
    * Android — `scripts/build-apk.sh release <keystore.jks>` (Docker fallback
      is automatic; on the prod host see the runbook in
      `docs/guides/android-release-runbook.md`). Output: `releases/android/`.
+
+     **Where the release keystore lives (since 2026-09-07):** on the prod host,
+     `~/keystores/onetothree-release.jks` with its passwords in
+     `~/keystores/onetothree-release.env` (both 0600, alias `p13release`).
+     The same keystore is mirrored into the GitHub secrets `release.yml`
+     reads, so the CI path and the by-hand path sign identically. It
+     REPLACED the v0.10.0 key (which existed only as a GitHub secret that
+     nothing could read back): v0.11.0+ APKs carry a different signature,
+     so a v0.10.0 install has to be uninstalled first. The certificate's
+     SHA-256 is what `client/public/.well-known/assetlinks.json` lists —
+     regenerate it with `scripts/gen-assetlinks.mjs` if the key ever changes
+     again, and redeploy the web so App Links verify.
+
+     On the host, without the wrapper:
+     ```bash
+     git clone --depth 1 https://github.com/therudywolf/OneToThree.git /tmp/apk-build
+     cp ~/stacks/onetothree.ru/.env.prod /tmp/apk-build/
+     . ~/keystores/onetothree-release.env
+     docker run --rm --memory=3g -v /tmp/apk-build:/workspace        -v ~/.gradle-apk:/root/.gradle -v ~/keystores:/keystore:ro        -e BUILD_TYPE=release -e RELEASE_STORE_FILE=/keystore/onetothree-release.jks        -e RELEASE_STORE_PASSWORD -e RELEASE_KEY_ALIAS -e RELEASE_KEY_PASSWORD        -e NEXT_PUBLIC_API_URL=https://api.onetothree.ru        onetothree-android-builder:latest bash /workspace/scripts/build-apk-inner.sh
+     ```
+     (`--memory=3g` because the live app shares the host; the container runs
+     as root, so clean up with `docker run --rm -v /tmp:/host alpine rm -rf
+     /host/apk-build`, not `rm`.)
    * Windows / Linux / macOS — on a machine of that OS,
      `cd desktop/tauri && npx @tauri-apps/cli build --bundles <nsis,msi|deb,appimage|dmg>`,
      then copy the bundles into `releases/desktop/`. Tauri does not

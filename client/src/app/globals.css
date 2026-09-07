@@ -4330,6 +4330,10 @@ select {
   }
 
   .p13-composer {
+    /* md3 sets the touch target to 48px; in a 375px row that is the
+       difference between a 46px text field and a usable one. 44px is still
+       above the Apple HIG floor. */
+    --p13-touch-target: 44px;
     padding-bottom: var(--p13-safe-bottom);
     transition: padding-bottom var(--p13-keyboard-settle-duration, 180ms) ease-out;
   }

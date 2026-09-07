@@ -1024,9 +1024,11 @@ html {
   background-color: var(--void);
 }
 
-/* iOS Safari: avoid auto-zoom on focus for inputs */
+/* iOS Safari: avoid auto-zoom on focus for inputs. `select` was missing, so
+   every dropdown in settings zoomed the page and never zoomed back. */
 input,
-textarea {
+textarea,
+select {
   font-size: 16px !important;
 }
 

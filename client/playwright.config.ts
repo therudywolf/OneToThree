@@ -46,6 +46,9 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-android', use: { ...devices['Pixel 7'] } },
     { name: 'mobile-ios', use: { ...devices['iPhone 14'] } },
+    // 375px wide — the width the two wider phones above never exercise, and
+    // the one where the composer used to push its send button off-screen.
+    { name: 'mobile-small', use: { ...devices['iPhone SE'] } },
   ],
   ...(shouldManageWebServer
     ? {

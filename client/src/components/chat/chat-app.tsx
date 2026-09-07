@@ -1884,11 +1884,15 @@ export function ChatApp({
             screens the `useDockStore` consumers should open modals instead. */}
         <DockPanelXlOnly />
       </div>
-      <MobileBottomNav
-        activeTab={mobileNavTab}
-        onTabChange={handleMobileNavTabChange}
-        unreadCount={unreadTotal}
-      />
+      {/* Inside an open conversation the back arrow is the way out; the tab
+          bar would only take ~56px from the messages on a 667px phone. */}
+      {activeChatId ? null : (
+        <MobileBottomNav
+          activeTab={mobileNavTab}
+          onTabChange={handleMobileNavTabChange}
+          unreadCount={unreadTotal}
+        />
+      )}
     </div>
   )
 }

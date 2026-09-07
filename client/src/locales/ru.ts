@@ -444,6 +444,7 @@ const ru = {
   'chat.newChat': 'Создать группу',
   'chat.startChatHint': 'Напишите кому-нибудь, введя имя ниже, или создайте группу.',
   'chat.attachFile': 'Прикрепить файл',
+  'chat.moreActions': 'Ещё: опрос, таймер удаления',
   'chat.inbox': 'Входящие',
   'chat.mentions': 'Упоминания',
   'chat.lockVault': 'Заблокировать хранилище',

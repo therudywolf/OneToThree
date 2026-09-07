@@ -710,14 +710,14 @@ export function ActiveCallOverlay({
 
   const controlBtn = (active: boolean, danger = false) =>
     isMd3
-      ? `h-12 w-12 rounded-full ${
+      ? `h-12 w-12 shrink-0 rounded-full ${
           danger
             ? 'bg-[var(--error-container,color-mix(in_srgb,var(--danger)_24%,var(--surface)))] text-[var(--on-error-container,var(--danger))]'
             : active
               ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]'
               : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
         }`
-      : `h-12 w-12 md:w-14 border-r border-border-strong ${
+      : `h-12 w-12 shrink-0 md:w-14 border-r border-border-strong ${
           danger
             ? 'bg-danger/30 text-neon-red'
             : active
@@ -895,7 +895,7 @@ export function ActiveCallOverlay({
 
           {/* SIDE PANEL (participants / debug) */}
           {sidePanelOpen && (
-            <aside className="w-[300px] max-w-[85vw] shrink-0 border-l border-border-strong">
+            <aside className="fixed inset-0 z-30 flex flex-col bg-void md:static md:inset-auto md:z-auto md:w-[300px] md:max-w-[85vw] md:shrink-0 md:border-l md:border-border-strong">
               {sidePanel === 'participants' ? (
                 <CallParticipantsPanel
                   rows={participantRows}
@@ -929,7 +929,7 @@ export function ActiveCallOverlay({
             visible clips them (setting overflow-x alone forces overflow-y to
             auto). Width is bounded by hiding non-essential controls on small
             screens instead. */}
-        <div className={`absolute left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'} ${
+        <div className={`absolute left-2 right-2 flex flex-wrap items-center justify-center shadow-2xl transition-all duration-300 md:left-1/2 md:right-auto md:max-w-[calc(100%-1rem)] md:-translate-x-1/2 ${showControls ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'} ${
           isMd3
             ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high,var(--surface-elevated))]/95 px-3 py-2'
             : isRetro

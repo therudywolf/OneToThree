@@ -987,7 +987,7 @@ export function LiveKitRoomStage({
         </main>
 
         {panelOpen ? (
-          <aside className="w-[300px] max-w-[85vw] shrink-0">
+          <aside className="fixed inset-0 z-30 flex flex-col bg-void md:static md:inset-auto md:z-auto md:w-[300px] md:max-w-[85vw] md:shrink-0">
             <MeetParticipantsPanel
               rows={participantRows}
               volumes={peerVolumes}

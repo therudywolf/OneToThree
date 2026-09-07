@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test'
 import { registerNewUser, uniqueHandle, fetchUserId } from './helpers'
 
 function isMobileProject(name: string): boolean {
-  return name.includes('mobile-android') || name.includes('mobile-ios')
+  return name.includes('mobile-android') || name.includes('mobile-ios') || name.includes('mobile-small')
 }
 
 test.describe('mobile parity / iOS + Android', () => {
@@ -171,3 +171,52 @@ test.describe('C3: mobile touch-pass — tap targets and scroll', () => {
   })
 })
 
+
+test.describe('C3: phone width — nothing leaves the viewport', () => {
+  const PASS = 'E2E_Strong_Pass_99!'
+
+  // Regression for the 375px composer: five 44px icon buttons plus a textarea
+  // whose intrinsic width is cols=20 at a forced 16px font added up to ~480px,
+  // and `body { overflow-x: hidden }` quietly clipped the send button off the
+  // right edge. boundingBox() does NOT clamp to the viewport, so the ≥44px
+  // test above passed the whole time — this one checks position, not size.
+  test('chat screen has no horizontal overflow and the send button is on-screen', async ({ page }, testInfo) => {
+    test.skip(!isMobileProject(testInfo.project.name), 'mobile projects only')
+
+    const handle = uniqueHandle('c3fit')
+    await registerNewUser(page, handle, PASS)
+    const selfChatId: string = await page.evaluate(async () => {
+      const res = await fetch('/api/chats/self', { credentials: 'include' })
+      const data = (await res.json()) as { id: string }
+      return data.id
+    })
+    await page.goto(`/?chat=${selfChatId}`)
+
+    const textarea = page.locator('textarea').first()
+    await expect(textarea).toBeVisible({ timeout: 15_000 })
+    await textarea.fill('fit')
+
+    const viewport = page.viewportSize()
+    expect(viewport).toBeTruthy()
+    const width = viewport!.width
+
+    const overflow = await page.evaluate(() => {
+      const root = document.scrollingElement ?? document.documentElement
+      return { scrollWidth: root.scrollWidth, innerWidth: window.innerWidth }
+    })
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth)
+
+    const sendBtn = page.getByRole('button', { name: /TX|send/i }).last()
+    await expect(sendBtn).toBeVisible()
+    const box = await sendBtn.boundingBox()
+    expect(box).toBeTruthy()
+    if (box) {
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(width)
+    }
+    // The text field must still be usable, not squeezed to a sliver.
+    const inputBox = await textarea.boundingBox()
+    expect(inputBox).toBeTruthy()
+    if (inputBox) expect(inputBox.width).toBeGreaterThanOrEqual(120)
+  })
+})

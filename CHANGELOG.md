@@ -5,7 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [0.11.0] — 2026-09-07
+
+Android APK built from `96a30cf5` on the prod host with the new release key
+(see *Changed* below: uninstall a v0.10.0 install first). Desktop bundles need
+a Windows / Linux / macOS machine each and are not part of this release.
 
 ### 2026-09-07 — the phone, the key, and the release that never shipped
 

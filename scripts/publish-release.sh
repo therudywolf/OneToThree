@@ -79,7 +79,11 @@ UPLOAD=()
 for a in "${ASSETS[@]}"; do
   [ -s "$a" ] || die "asset missing or empty: $a"
   case "$a" in
-    *.apk) unzip -p "$a" META-INF/MANIFEST.MF >/dev/null 2>&1 || die "not a signed APK (no META-INF/MANIFEST.MF): $a" ;;
+    # Modern APKs are signed with scheme v2/v3 (a signing block, not
+    # META-INF/*.RSA), so the only cheap local check is "is it a valid zip";
+    # the signature itself is verified where it was built (`apksigner verify`
+    # in the builder image). Reject a debug-signed file by name above.
+    *.apk) unzip -tq "$a" >/dev/null 2>&1 || die "not a valid APK (zip check failed): $a" ;;
   esac
   sha="${a}.sha256"
   (cd "$(dirname "$a")" && sha256sum "$(basename "$a")") > "$sha"

@@ -1015,6 +1015,55 @@ export const guestInvites = pgTable(
  * validates against the registry anyway, but a typed column keeps a hand-edited
  * row from silently becoming the string "false" (which is truthy).
  */
+/**
+ * Passkey-sealed keyrings — the account key as an "electronic token".
+ *
+ * A third sealed copy of the keyring (after the password-wrapped local vault
+ * and the recovery-phrase copy): AES-256-GCM under a key derived (HKDF) from
+ * the WebAuthn PRF output of ONE passkey. The passkey lives in 1Password /
+ * Bitwarden / iCloud Keychain / a YubiKey, syncs wherever those sync, and
+ * only releases its PRF secret to this RP after user verification — so on a
+ * new device "sign in with your passkey" turns into the keyring without the
+ * server ever seeing plaintext, a password, or the PRF secret.
+ *
+ * The server verifies the assertion (public key + counter) BEFORE handing
+ * the sealed blob out; the blob is useless without the PRF output anyway.
+ */
+export const passkeyKeyrings = pgTable(
+  'passkey_keyrings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** WebAuthn credential id, base64url. */
+    credentialId: text('credential_id').notNull().unique(),
+    /** COSE public key bytes, base64url. */
+    publicKey: text('public_key').notNull(),
+    /** Signature counter reported by the authenticator (0 for most passkeys). */
+    counter: bigint('counter', { mode: 'number' }).notNull().default(0),
+    /** JSON array of transports hints, e.g. ["internal","hybrid"]. */
+    transports: text('transports'),
+    aaguid: text('aaguid'),
+    /** Human label ("1Password", "YubiKey 5C"). */
+    label: text('label'),
+    /** PRF eval input for this credential, base64url (public, 32 bytes). */
+    prfSalt: text('prf_salt').notNull(),
+    /** HKDF salt used to turn the PRF output into the wrapping key, base64url. */
+    hkdfSalt: text('hkdf_salt').notNull(),
+    /** AES-GCM iv + ciphertext of the keyring plaintext, base64url. */
+    wrapIv: text('wrap_iv').notNull(),
+    wrappedKeyring: text('wrapped_keyring').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => ({
+    userIdx: index('passkey_keyrings_user_id_idx').on(t.userId),
+  })
+)
+
 export const instanceSettings = pgTable('instance_settings', {
   key: text('key').primaryKey(),
   value: jsonb('value').notNull(),

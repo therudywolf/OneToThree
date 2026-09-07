@@ -29,6 +29,7 @@
     "@fastify/multipart": "^10.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
+    "@simplewebauthn/server": "^14.0.1",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5",

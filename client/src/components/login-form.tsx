@@ -10,12 +10,13 @@ import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
 import { recoverWithPhrase } from '@/lib/auth/crypto-recover'
 import { ensureClientDeviceId, clearSessionApi } from '@/lib/api/auth'
 import { parseNickname } from '@/lib/nickname'
-import { persistVaultBlobByLoginUsername, type VaultBlob } from '@/lib/vault'
+import { persistVaultBlobByLoginUsername, type VaultBlob, wrapPrivateJwkWithPin } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { PostRegisterVaultPrompt } from '@/components/post-register-vault-prompt'
 import { explainLoginError } from '@/lib/login-errors'
 import { decodeKeyString, looksLikeKeyString } from '@/lib/vault/key-string'
+import { PasskeyKeyringError, isPasskeyAvailable, unlockKeyringWithPasskey } from '@/lib/passkey-keyring'
 import { useThemeStore } from '@/store/themeStore'
 
 /**
@@ -113,6 +114,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
   const [noVaultFor, setNoVaultFor]     = useState<string | null>(null)
   const [keyStringOpen, setKeyStringOpen] = useState(false)
   const [keyStringText, setKeyStringText] = useState('')
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
   const [staleSession, setStaleSession] = useState(false)
   const [showVaultPrompt, setShowVaultPrompt] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -198,6 +200,43 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
     setConfirmVaultPassword('')
     setErrorLog(null)
     setInfoLog(null)
+  }
+
+  /**
+   * Passkey as the key's carrier: the passkey's PRF output unseals the
+   * keyring the server holds in ciphertext; the password typed above then
+   * wraps it into this device's vault, and the ordinary sign-in runs.
+   */
+  const loginWithPasskey = async () => {
+    const username = (noVaultFor ?? handle).trim()
+    if (!username) { setErrorLog(t('login.usernameRequired')); return }
+    if (!vaultPassword) { setErrorLog(t('login.passkeyNeedsPassword')); return }
+    setErrorLog(null)
+    setPasskeyBusy(true)
+    try {
+      const plaintext = await unlockKeyringWithPasskey(username)
+      const blob = await wrapPrivateJwkWithPin(plaintext, vaultPassword)
+      const nick = parseNickname(username)
+      if (!nick.ok) { setErrorLog(t('login.invalidUsernameFormat')); return }
+      persistVaultBlobByLoginUsername(nick.value, blob)
+      setHandle(nick.value)
+      setNoVaultFor(null)
+      setVaultLinkOk(true)
+      await execAuthProtocol({ preventDefault() {} } as unknown as React.FormEvent)
+    } catch (e) {
+      const code = e instanceof PasskeyKeyringError ? e.code : 'PASSKEY_SERVER_ERROR'
+      const map: Record<string, Parameters<typeof t>[0]> = {
+        PASSKEY_UNSUPPORTED: 'passkey.errUnsupported',
+        PRF_UNSUPPORTED: 'passkey.errPrf',
+        PASSKEY_CANCELLED: 'passkey.errCancelled',
+        PASSKEY_NO_CREDENTIAL: 'passkey.errNoCredential',
+        PASSKEY_UNSEAL_FAILED: 'passkey.errUnseal',
+        PASSKEY_SERVER_ERROR: 'passkey.errServer',
+      }
+      setErrorLog(t(map[code] ?? 'passkey.errServer'))
+    } finally {
+      setPasskeyBusy(false)
+    }
   }
 
   /** A key string (`otk1.…`) pasted from a password manager. */
@@ -840,11 +879,19 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                     {t('login.noLocalVaultExplain').replace('{handle}', noVaultFor)}
                   </p>
                   <ul className="list-disc space-y-1 pl-4 text-xs text-text-muted">
+                    {isPasskeyAvailable() ? <li>{t('login.noLocalVaultOptPasskey')}</li> : null}
                     <li>{t('login.noLocalVaultOptKeyString')}</li>
                     <li>{t('login.noLocalVaultOptFile')}</li>
                     <li>{t('login.noLocalVaultOptLink')}</li>
                     <li>{t('login.noLocalVaultOptRecovery')}</li>
                   </ul>
+                  {isPasskeyAvailable() ? (
+                    <button type="button" onClick={() => void loginWithPasskey()} disabled={passkeyBusy || isBusy}
+                      data-testid="passkey-login"
+                      className={`w-full py-2 text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 ${isMd3 ? 'rounded-full bg-[var(--primary)] font-medium text-[var(--on-primary)]' : 'border border-neon-cyan bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20'}`}>
+                      {passkeyBusy ? '…' : t('login.passkeyLogin')}
+                    </button>
+                  ) : null}
                 </div>
               )}
 

@@ -13,6 +13,7 @@ import {
   persistVaultBlob,
   persistVaultBlobByLoginUsername,
 } from '@/lib/vault'
+import { encodeKeyString } from '@/lib/vault/key-string'
 import {
   AUTO_LOCK_OPTIONS,
   loadAutoLockTimeout,
@@ -97,7 +98,7 @@ function readDiscoverableFromPayload(v: unknown): boolean {
   return false
 }
 
-type VaultGateTarget = 'export' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | 'recovery_enable' | 'recovery_disable' | null
+type VaultGateTarget = 'export' | 'copy_key' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | 'recovery_enable' | 'recovery_disable' | null
 type AppearanceStyleId = 'terminal' | 'md3' | 'retro'
 
 export function SettingsModal({ userId, username, onClose }: Props) {
@@ -193,6 +194,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   /** Pending vault-gate action — null = gate closed */
   const [vaultGate, setVaultGate] = useState<VaultGateTarget>(null)
+  const [keyStringCopied, setKeyStringCopied] = useState(false)
+  const [keyStringShown, setKeyStringShown] = useState<string | null>(null)
   const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus | null>(null)
   const [recoveryEnable, setRecoveryEnable] = useState<{ mnemonic: string; recoveryBlob: string; publicJwk: string; ecdsaPrivateJwk: string } | null>(null)
   const [recoveryRequireTotp, setRecoveryRequireTotp] = useState(false)
@@ -324,6 +327,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     const target = vaultGate
     setVaultGate(null)
     if (target === 'export')           { execExportVault(); return }
+    if (target === 'copy_key')         { void execCopyKeyString(); return }
     if (target === 'totp_setup')       { void startTotpSetup(); return }
     if (target === 'totp_disable')     { setTotpDisableOpen(true); return }
     if (target === 'device_linking_on') { void setDeviceLinking(true); return }
@@ -333,6 +337,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   function gateActionLabel(target: VaultGateTarget): string {
     if (target === 'export')            return t('settings.exportVaultAction')
+    if (target === 'copy_key')          return t('settings.copyKeyStringAction')
     if (target === 'totp_setup')        return t('settings.totpSetupGateLabel')
     if (target === 'totp_disable')      return t('settings.totpDisableGateLabel')
     if (target === 'device_linking_on') return t('settings.deviceLinkingGateLabel')
@@ -715,6 +720,22 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     a.download = 'forest_vault_key.json'
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // The same payload as the file, as one line for a password-manager field.
+  async function execCopyKeyString() {
+    const blob = readVaultBlob(userId)
+    if (!blob) { setError(t('settings.noLocalVault')); return }
+    const token = encodeKeyString({ username, vault: blob })
+    try {
+      await navigator.clipboard.writeText(token)
+      setKeyStringCopied(true)
+      setTimeout(() => setKeyStringCopied(false), 4000)
+    } catch {
+      // Clipboard denied (older WebViews, no user gesture left): show the
+      // token so it can be selected by hand.
+      setKeyStringShown(token)
+    }
   }
 
   const settingsReady = discoverable !== null && hidePresence !== null
@@ -1119,6 +1140,21 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
                   {chromeLabel(t('settings.exportVaultAction'))}
                 </button>
+                <p className="mb-2 mt-4 text-[9px] text-text-muted">{t('settings.copyKeyStringHint')}</p>
+                <button type="button"
+                  onClick={() => { setError(null); setKeyStringShown(null); setVaultGate('copy_key') }}
+                  className="w-full border border-neon-cyan/60 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
+                  {chromeLabel(keyStringCopied ? t('settings.copyKeyStringDone') : t('settings.copyKeyStringAction'))}
+                </button>
+                {keyStringShown && (
+                  <textarea
+                    readOnly
+                    value={keyStringShown}
+                    onFocus={(e) => e.currentTarget.select()}
+                    rows={3}
+                    className="mt-2 w-full resize-none border border-neon-cyan/30 bg-void p-2 font-mono text-[10px] text-text-primary"
+                  />
+                )}
               </div>
 
               {/* Auto-lock */}

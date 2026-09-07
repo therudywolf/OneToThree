@@ -176,10 +176,15 @@ describe('ChatInput — characterization net (pre-refactor)', () => {
     expect(screen.queryByRole('textbox')).toBeNull()
   })
 
-  it('#7b a disabled composer disables the send button', () => {
+  it('#7b a disabled composer cannot send', () => {
     renderInput({ cryptoCtx: DIRECT_CTX, disabled: true })
-    const send = screen.getByRole('button', { name: 'common.send' }) as HTMLButtonElement
-    expect(send.disabled).toBe(true)
+    // The send button only exists once there is text (the mic takes its slot
+    // otherwise — one primary action at a time); when it does exist on a
+    // disabled composer it must be disabled. Either way: no way to send.
+    const send = screen.queryByRole('button', { name: 'common.send' }) as HTMLButtonElement | null
+    expect(send === null || send.disabled).toBe(true)
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(textarea.disabled).toBe(true)
   })
 
   it('#8 switching chats clears a staged reply and an armed burn timer (regression)', async () => {

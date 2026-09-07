@@ -926,9 +926,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
           </div>
         ) : null}
 
-        {/* Attach — always opens file picker directly (hidden if media disabled) */}
+        {/* Attach — always opens file picker directly (hidden if media disabled;
+            folded into the "+" menu on phones) */}
         {capabilities.media ? (
-          <div className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
+          <div className={`relative hidden shrink-0 sm:block ${isMd3 ? 'order-1' : ''}`}>
             <button
               type="button"
               className="p13-icon-btn"
@@ -957,6 +958,16 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
             </button>
             {mobileMoreOpen ? (
               <div className="absolute bottom-full left-0 z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-xl">
+                {capabilities.media ? (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-3 text-left text-sm text-[color:var(--on-surface)]"
+                    onClick={() => { setMobileMoreOpen(false); handleAttachClick() }}
+                  >
+                    <Paperclip className="h-4 w-4 shrink-0" />
+                    {t('chat.attachFile')}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-3 text-left text-sm text-[color:var(--on-surface)]"
@@ -1269,7 +1280,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
 
         {/* Record button — hidden when text is present (Telegram-style mic↔send
             morph), or entirely when media is disabled for this instance. */}
-        {capabilities.media ? (
+        {capabilities.media && !showSendOnMobile ? (
         <button
           type="button"
           className={`p13-icon-btn shrink-0 select-none ${
@@ -1278,7 +1289,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
               : mediaMode === 'voice'
               ? 'p13-icon-btn--primary'
               : 'p13-icon-btn--danger'
-          } ${showSendOnMobile ? 'hidden' : 'inline-flex'} ${isMd3 ? 'order-4' : ''}`}
+          } ${isMd3 ? 'order-4' : ''}`}
           disabled={disabled || !cryptoCtx}
           onContextMenu={handleContextMenu}
           onPointerDown={handleRecordPointerDown}
@@ -1306,18 +1317,18 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
             Mirrors the record button: exactly one primary action is visible at a
             time on every breakpoint (TG/Discord never show a dead, disabled send
             button next to the mic). */}
+        {showSendOnMobile ? (
         <button
           type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
-          className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${
-            showSendOnMobile ? 'inline-flex' : 'hidden'
-          } ${isMd3 ? 'order-5' : ''}`}
+          className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${isMd3 ? 'order-5' : ''}`}
           onClick={(e) => void onSubmit(e as unknown as React.FormEvent)}
           aria-label={t('common.send')}
           title={t('common.send')}
         >
           <Send className="h-4 w-4" />
         </button>
+        ) : null}
       </div>
     </form>
   )

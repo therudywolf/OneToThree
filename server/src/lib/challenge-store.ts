@@ -20,18 +20,22 @@ const TTL_S = 60
 // in-memory fallback
 const mem = new Map<string, PendingChallenge>()
 
-export async function setChallenge(username: string, nonce: string): Promise<void> {
+export async function setChallenge(
+  username: string,
+  nonce: string,
+  ttlSeconds: number = TTL_S,
+): Promise<void> {
   const r = getRedis()
   if (r) {
     try {
-      await r.set(`${KEY_PREFIX}${username}`, nonce, 'EX', TTL_S)
+      await r.set(`${KEY_PREFIX}${username}`, nonce, 'EX', ttlSeconds)
       return
     } catch {
       /* Redis down — fall through to the in-memory map so login still works */
     }
   }
   pruneMem()
-  mem.set(username, { nonce, expiresAt: Date.now() + TTL_S * 1000 })
+  mem.set(username, { nonce, expiresAt: Date.now() + ttlSeconds * 1000 })
 }
 
 export async function getPending(username: string): Promise<PendingChallenge | null> {

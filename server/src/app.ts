@@ -10,6 +10,7 @@ import Fastify, { type FastifyRequest } from 'fastify'
 import websocket from '@fastify/websocket'
 import { verifySessionJwt, type SessionJwtPayload } from './lib/auth-user.js'
 import { authRoutes } from './routes/auth.js'
+import { passkeyRoutes } from './routes/passkey.js'
 import { chatsRoutes } from './routes/chats.js'
 import { messagesRoutes } from './routes/messages.js'
 import { pushRoutes } from './routes/push.js'
@@ -522,6 +523,7 @@ export async function buildApp() {
 
   // Always-on core (text messaging, auth, devices, keys, chats, polls, vault).
   await app.register(authRoutes, { prefix: '/api/auth' })
+  await app.register(passkeyRoutes, { prefix: '/api/auth/passkey' })
   await app.register(userRoutes, { prefix: '/api/users' })
   await app.register(chatsRoutes, { prefix: '/api/chats' })
   await app.register(messagesRoutes, { prefix: '/api/messages' })

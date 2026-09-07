@@ -14,6 +14,8 @@ import {
   persistVaultBlobByLoginUsername,
 } from '@/lib/vault'
 import { encodeKeyString } from '@/lib/vault/key-string'
+import { deletePasskey, listPasskeys, type PasskeyRow } from '@/lib/api/passkey'
+import { PasskeyKeyringError, enrolPasskeyKeyring, isPasskeyAvailable } from '@/lib/passkey-keyring'
 import {
   AUTO_LOCK_OPTIONS,
   loadAutoLockTimeout,
@@ -98,7 +100,7 @@ function readDiscoverableFromPayload(v: unknown): boolean {
   return false
 }
 
-type VaultGateTarget = 'export' | 'copy_key' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | 'recovery_enable' | 'recovery_disable' | null
+type VaultGateTarget = 'export' | 'copy_key' | 'passkey_add' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | 'recovery_enable' | 'recovery_disable' | null
 type AppearanceStyleId = 'terminal' | 'md3' | 'retro'
 
 export function SettingsModal({ userId, username, onClose }: Props) {
@@ -322,12 +324,75 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     })()
   }, [userId, updateUser])
 
+  // ── Passkey-sealed keyring ("electronic token") ────────────────────────────
+  const [passkeys, setPasskeys] = useState<PasskeyRow[] | null>(null)
+  const [passkeyServerOk, setPasskeyServerOk] = useState(true)
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const [passkeyNote, setPasskeyNote] = useState<string | null>(null)
+  const passkeySupported = isPasskeyAvailable()
+
+  const reloadPasskeys = useCallback(async () => {
+    try {
+      const r = await listPasskeys()
+      setPasskeys(r.passkeys)
+      setPasskeyServerOk(r.available)
+    } catch {
+      setPasskeys([])
+    }
+  }, [])
+  useEffect(() => { void reloadPasskeys() }, [reloadPasskeys])
+
+  function passkeyErrorText(e: unknown): string {
+    const code = e instanceof PasskeyKeyringError ? e.code : 'PASSKEY_SERVER_ERROR'
+    const map: Record<string, Parameters<typeof t>[0]> = {
+      PASSKEY_UNSUPPORTED: 'passkey.errUnsupported',
+      PRF_UNSUPPORTED: 'passkey.errPrf',
+      PASSKEY_CANCELLED: 'passkey.errCancelled',
+      PASSKEY_NO_CREDENTIAL: 'passkey.errNoCredential',
+      PASSKEY_UNSEAL_FAILED: 'passkey.errUnseal',
+      PASSKEY_SERVER_ERROR: 'passkey.errServer',
+    }
+    return t(map[code] ?? 'passkey.errServer')
+  }
+
+  // Runs AFTER the vault gate: `pin` is the password the user just proved.
+  async function execEnrolPasskey(pin: string) {
+    const blob = readVaultBlob(userId)
+    if (!blob) { setError(t('settings.noLocalVault')); return }
+    setPasskeyBusy(true)
+    setPasskeyNote(null)
+    try {
+      const plaintext = await unwrapPrivateJwkWithPin(blob, pin)
+      await enrolPasskeyKeyring(plaintext)
+      setPasskeyNote(t('passkey.enrolled'))
+      await reloadPasskeys()
+    } catch (e) {
+      setPasskeyNote(passkeyErrorText(e))
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  async function removePasskey(id: string) {
+    if (!window.confirm(t('passkey.removeConfirm'))) return
+    setPasskeyBusy(true)
+    try {
+      await deletePasskey(id)
+      await reloadPasskeys()
+    } catch (e) {
+      setPasskeyNote(passkeyErrorText(e))
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
   // ── Vault gate handler ──────────────────────────────────────────────────────
   function handleVaultGateVerified(pin: string) {
     const target = vaultGate
     setVaultGate(null)
     if (target === 'export')           { execExportVault(); return }
     if (target === 'copy_key')         { void execCopyKeyString(); return }
+    if (target === 'passkey_add')      { void execEnrolPasskey(pin); return }
     if (target === 'totp_setup')       { void startTotpSetup(); return }
     if (target === 'totp_disable')     { setTotpDisableOpen(true); return }
     if (target === 'device_linking_on') { void setDeviceLinking(true); return }
@@ -338,6 +403,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   function gateActionLabel(target: VaultGateTarget): string {
     if (target === 'export')            return t('settings.exportVaultAction')
     if (target === 'copy_key')          return t('settings.copyKeyStringAction')
+    if (target === 'passkey_add')       return t('passkey.add')
     if (target === 'totp_setup')        return t('settings.totpSetupGateLabel')
     if (target === 'totp_disable')      return t('settings.totpDisableGateLabel')
     if (target === 'device_linking_on') return t('settings.deviceLinkingGateLabel')
@@ -1155,6 +1221,43 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     className="mt-2 w-full resize-none border border-neon-cyan/30 bg-void p-2 font-mono text-[10px] text-text-primary"
                   />
                 )}
+              </div>
+
+              {/* Passkey-sealed keyring — the key as a token in 1Password / YubiKey */}
+              <div className="border border-neon-cyan/30 p-3" data-testid="passkey-block">
+                <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">{t('passkey.title')}</p>
+                <p className="mb-3 text-[9px] text-text-muted">{t('passkey.hint')}</p>
+                {passkeys && passkeys.length > 0 ? (
+                  <ul className="mb-3 space-y-1">
+                    {passkeys.map((p) => (
+                      <li key={p.id} className="flex items-center justify-between gap-2 text-[10px] text-text-primary">
+                        <span className="min-w-0 truncate">
+                          {p.label || t('passkey.unnamed')}
+                          <span className="ml-2 text-text-muted">{new Date(p.created_at).toLocaleDateString()}</span>
+                        </span>
+                        <button type="button" disabled={passkeyBusy}
+                          onClick={() => void removePasskey(p.id)}
+                          className="shrink-0 border border-neon-red/50 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
+                          {t('common.delete')}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : passkeys ? (
+                  <p className="mb-3 text-[10px] text-text-muted">{t('passkey.none')}</p>
+                ) : null}
+                {!passkeySupported ? (
+                  <p className="text-[9px] text-danger">{t('passkey.errUnsupported')}</p>
+                ) : !passkeyServerOk ? (
+                  <p className="text-[9px] text-danger">{t('passkey.errServerOff')}</p>
+                ) : (
+                  <button type="button" disabled={passkeyBusy}
+                    onClick={() => { setError(null); setPasskeyNote(null); setVaultGate('passkey_add') }}
+                    className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
+                    {chromeLabel(passkeyBusy ? '…' : t('passkey.add'))}
+                  </button>
+                )}
+                {passkeyNote ? <p className="mt-2 text-[10px] text-neon-cyan">{passkeyNote}</p> : null}
               </div>
 
               {/* Auto-lock */}

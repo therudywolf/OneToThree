@@ -1227,7 +1227,7 @@ export function ChatApp({
           >
             <ArrowLeft className="h-5 w-5" strokeWidth={1.5} aria-hidden />
           </button>
-        ) : (
+        ) : mobileSidebarOpen ? null : (
           <button
             type="button"
             className="p13-icon-btn touch-manipulation md:hidden"
@@ -1291,7 +1291,7 @@ export function ChatApp({
                   <button
                     type="button"
                     onClick={() => void endTempGuestChat()}
-                    className="shrink-0 rounded p-1 text-text-muted transition-colors hover:text-neon-red"
+                    className="grid min-h-[44px] min-w-[44px] shrink-0 place-items-center rounded p-1 text-text-muted transition-colors hover:text-neon-red sm:min-h-0 sm:min-w-0"
                     title={t('guest.endChat')}
                     aria-label={t('guest.endChat')}
                   >
@@ -1455,41 +1455,43 @@ export function ChatApp({
 
       {/* ─── MAIN LAYOUT ────────────────────────────────────────────────────────────────────────── */}
       <div className="chat-ultrawide-container relative flex min-h-0 min-w-0 flex-1 overflow-hidden overscroll-none">
-        {mobileSidebarOpen ? (
+        {mobileSidebarOpen && activeChatId ? (
           <button
             type="button"
-            className="fixed inset-0 z-40 touch-none bg-void/75 md:hidden"
+            className="absolute inset-0 z-30 touch-none bg-void/75 md:hidden"
             aria-label={t('sidebar.closeChannelList')}
             onClick={closeMobileOverlays}
           />
         ) : null}
         <div
-          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex min-h-0 w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-full md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[var(--p13-safe-top)] md:pt-0 pb-[var(--p13-safe-bottom)] md:pb-0 ${
+          className={`chat-layout-sidebar absolute inset-y-0 left-0 z-40 flex min-h-0 w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-full md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
           style={{ ['--p13-sb-w' as string]: `${sidebarCollapsed ? TELEGRAM_BEHAVIOR.sidebar.collapsedWidth : sidebarWidth}px` } as React.CSSProperties}
           data-collapsed={sidebarCollapsed ? 'true' : 'false'}
         >
-          <div
-            className={`flex h-12 shrink-0 items-center justify-between border-b px-3 md:hidden ${
-              isMd3
-                ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
-                : 'border-neon-cyan/20'
-            }`}
-          >
-            <span className={`text-[11px] uppercase tracking-[0.2em] ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono text-neon-cyan/85'}`}>
-              {t('sidebar.channels')}
-            </span>
-            <button
-              type="button"
-              onClick={closeMobileOverlays}
-              aria-label={t('common.close')}
-              title={t('common.close')}
-              className="p13-icon-btn touch-manipulation"
+          {activeChatId ? (
+            <div
+              className={`flex h-12 shrink-0 items-center justify-between border-b px-3 md:hidden ${
+                isMd3
+                  ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                  : 'border-neon-cyan/20'
+              }`}
             >
-              <X className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
+              <span className={`text-[11px] uppercase tracking-[0.2em] ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono text-neon-cyan/85'}`}>
+                {t('sidebar.channels')}
+              </span>
+              <button
+                type="button"
+                onClick={closeMobileOverlays}
+                aria-label={t('common.close')}
+                title={t('common.close')}
+                className="p13-icon-btn touch-manipulation"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          ) : null}
           <ChatSidebar
             userId={userId}
             isAdmin={user?.role === 'admin'}

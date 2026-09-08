@@ -196,7 +196,7 @@ export function CreateGroupModal({ userId, onClose, onCreated, initialMode = 'gr
             onClick={onClose}
             aria-label={t('common.close')}
             title={t('common.close')}
-            className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${isRetro ? 'hover:text-[var(--danger)]' : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-red'}`}
+            className={`grid h-11 w-11 place-items-center rounded-full transition-colors sm:h-7 sm:w-7 ${isRetro ? 'hover:text-[var(--danger)]' : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-red'}`}
           >
             <X className="h-4 w-4" />
           </button>

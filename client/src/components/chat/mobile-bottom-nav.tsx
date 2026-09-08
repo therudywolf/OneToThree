@@ -1,10 +1,10 @@
 'use client'
 
-import { MessageCircle, Users, Phone, Settings } from 'lucide-react'
+import { MessageCircle, Users, Settings } from 'lucide-react'
 import { useThemeStore } from '@/store/themeStore'
 import { useTranslation } from '@/hooks/use-translation'
 
-export type MobileNavTab = 'chats' | 'contacts' | 'calls' | 'settings'
+export type MobileNavTab = 'chats' | 'contacts' | 'settings'
 
 interface MobileBottomNavProps {
   activeTab: MobileNavTab
@@ -19,7 +19,6 @@ export function MobileBottomNav({ activeTab, onTabChange, unreadCount = 0 }: Mob
   const tabs: Array<{ id: MobileNavTab; icon: typeof MessageCircle; label: string; badge?: number }> = [
     { id: 'chats', icon: MessageCircle, label: t('mobileNav.chats'), badge: unreadCount },
     { id: 'contacts', icon: Users, label: t('mobileNav.contacts') },
-    { id: 'calls', icon: Phone, label: t('mobileNav.calls') },
     { id: 'settings', icon: Settings, label: t('mobileNav.settings') },
   ]
 

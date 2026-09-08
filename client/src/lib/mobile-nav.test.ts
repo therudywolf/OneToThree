@@ -17,10 +17,19 @@ describe('resolveMobileNavAction', () => {
   it('routes every bottom-nav tab to a concrete action (no inert tabs)', () => {
     // Regression: 'contacts' and 'calls' previously fell through to a no-op,
     // so tapping those tabs did nothing.
-    const tabs: MobileNavTab[] = ['chats', 'contacts', 'calls', 'settings']
+    const tabs: MobileNavTab[] = ['chats', 'contacts', 'settings']
     for (const tab of tabs) {
       expect(resolveMobileNavAction(tab)).toBeDefined()
     }
+  })
+
+  it('no two tabs land on the same surface', () => {
+    // The failure this pins: 'calls' and 'contacts' both resolved to the
+    // direct-chats folder, so three of four tabs opened the same view and the
+    // nav looked broken. A tab that duplicates another is worse than absent.
+    const tabs: MobileNavTab[] = ['chats', 'contacts', 'settings']
+    const surfaces = tabs.map((tab) => JSON.stringify(resolveMobileNavAction(tab)))
+    expect(new Set(surfaces).size).toBe(tabs.length)
   })
 
   it('opens the chat list on the "all" folder for the chats tab', () => {
@@ -32,13 +41,6 @@ describe('resolveMobileNavAction', () => {
 
   it('focuses the direct-chats folder for the contacts tab', () => {
     expect(resolveMobileNavAction('contacts')).toEqual({
-      kind: 'sidebar',
-      folderId: 'direct',
-    })
-  })
-
-  it('focuses the direct-chats folder for the calls tab', () => {
-    expect(resolveMobileNavAction('calls')).toEqual({
       kind: 'sidebar',
       folderId: 'direct',
     })

@@ -220,3 +220,56 @@ test.describe('C3: phone width — nothing leaves the viewport', () => {
     if (inputBox) expect(inputBox.width).toBeGreaterThanOrEqual(120)
   })
 })
+
+test.describe('C3: the chat list is the phone start screen', () => {
+  const PASS = 'E2E_Strong_Pass_99!'
+
+  // Regression for the drawer-over-nothing layout: the list was
+  // `fixed inset-y-0`, so it covered the tab bar and the app header, and its
+  // ✕ dropped the user on an empty "pick a chat from the list on the left"
+  // panel — on a screen that has no left. Anchored to the layout container it
+  // is the screen, with the tab bar under it.
+  test('with no chat open, the list and the tab bar are both on screen', async ({ page }, testInfo) => {
+    test.skip(!isMobileProject(testInfo.project.name), 'mobile projects only')
+
+    const handle = uniqueHandle('c3home')
+    await registerNewUser(page, handle, PASS)
+    await page.goto('/')
+
+    const sidebar = page.locator('.chat-layout-sidebar')
+    const nav = page.locator('nav[aria-label="Main navigation"]')
+    await expect(sidebar).toBeVisible({ timeout: 15_000 })
+    await expect(nav).toBeVisible()
+
+    const viewport = page.viewportSize()
+    expect(viewport).toBeTruthy()
+    const sidebarBox = await sidebar.boundingBox()
+    const navBox = await nav.boundingBox()
+    expect(sidebarBox).toBeTruthy()
+    expect(navBox).toBeTruthy()
+    if (sidebarBox && navBox && viewport) {
+      // The tab bar is fully on screen…
+      expect(navBox.y + navBox.height).toBeLessThanOrEqual(viewport.height + 1)
+      // …and the list stops above it instead of covering it.
+      expect(sidebarBox.y + sidebarBox.height).toBeLessThanOrEqual(navBox.y + 1)
+    }
+  })
+
+  test('opening a chat gives the messages the whole screen', async ({ page }, testInfo) => {
+    test.skip(!isMobileProject(testInfo.project.name), 'mobile projects only')
+
+    const handle = uniqueHandle('c3open')
+    await registerNewUser(page, handle, PASS)
+    const selfChatId: string = await page.evaluate(async () => {
+      const res = await fetch('/api/chats/self', { credentials: 'include' })
+      const data = (await res.json()) as { id: string }
+      return data.id
+    })
+    await page.goto(`/?chat=${selfChatId}`)
+
+    await expect(page.locator('textarea').first()).toBeVisible({ timeout: 15_000 })
+    // The back arrow is the way out, so the tab bar would only be taking
+    // ~56px away from the messages.
+    await expect(page.locator('nav[aria-label="Main navigation"]')).toHaveCount(0)
+  })
+})

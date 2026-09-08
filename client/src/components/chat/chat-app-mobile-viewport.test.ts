@@ -75,20 +75,21 @@ describe('mobile viewport — app shell height', () => {
     expect(lastHeight).not.toMatch(/^100vh$/)
   })
 
-  it('also clamps the fixed-position mobile sidebar drawer to 100svh', () => {
-    // The drawer is `position: fixed` — if it overflows, its bottom actions
-    // become unreachable just like the shell did. The mobile block has several
-    // `.chat-layout-sidebar` rules; at least one must carry the svh-clamped
-    // height (and none may set a bare `height: 100vh`).
+  it('sizes the mobile chat list to its container, never to the viewport', () => {
+    // The list is `absolute` inside .chat-ultrawide-container, so top/bottom
+    // give it the room between the header and the tab bar. A viewport-height
+    // clamp here (which the old fixed drawer needed) makes it taller than its
+    // own box and pushes its footer actions under the tab bar — the very
+    // unreachable-bottom failure the clamp was written to prevent.
     const sidebarRules = [
       ...block.matchAll(/\.chat-layout-sidebar\s*\{([^}]*)\}/g),
     ].map((m) => m[1])
-    expect(sidebarRules.length).toBeGreaterThan(0)
-    const clamped = sidebarRules.some((r) => /height:\s*min\([^)]*100svh[^)]*\)/.test(r))
-    expect(clamped, '.chat-layout-sidebar must have an svh-clamped height').toBe(true)
-    for (const r of sidebarRules) {
-      expect(r).not.toMatch(/height:\s*100vh\s*;/)
-    }
+    expect(sidebarRules.length, '.chat-layout-sidebar mobile rules must exist').toBeGreaterThan(0)
+    const joined = sidebarRules.join('\n')
+    expect(joined, 'no viewport-height clamp on the list').not.toMatch(
+      /height:\s*[^;]*100[sd]vh/,
+    )
+    expect(joined).toMatch(/max-height:\s*100%/)
   })
 })
 

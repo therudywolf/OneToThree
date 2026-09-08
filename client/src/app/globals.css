@@ -1997,13 +1997,18 @@ select {
   .chat-layout-sidebar {
     top: 0;
     bottom: 0;
-    /* Same svh clamp as .p13-app-shell — the fixed-position drawer must not
-       overflow behind the browser chrome either, or its bottom actions
-       become unreachable. */
-    height: 100dvh;
-    height: min(var(--p13-app-height, 100svh), 100svh);
-    max-height: 100dvh;
-    max-height: min(var(--p13-app-height, 100svh), 100svh);
+    /* The chat list is absolutely positioned INSIDE .chat-ultrawide-container
+       (chat-app.tsx), so top/bottom already give it exactly the room between
+       the app header and the bottom tab bar. It must size to that box.
+
+       It used to be a viewport-sized fixed drawer and carried the same svh
+       clamp as .p13-app-shell. Keeping that clamp after the drawer became a
+       screen made the list ~127px taller than its own box on a 812px phone:
+       its footer actions — open a DM, groups & channels, create — fell under
+       the tab bar and off the bottom, which is the exact unreachable-bottom
+       failure the clamp was written to prevent. */
+    height: auto;
+    max-height: 100%;
     min-height: 0;
   }
   .chat-layout-main,

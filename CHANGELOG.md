@@ -41,6 +41,21 @@ cause.
   this device." It now explains that the account exists and names the four
   ways to bring the key here.
 
+#### Fixed (mobile navigation)
+- **The chat list is the phone's start screen.** It used to be a
+  viewport-sized drawer over an empty "pick a chat from the list on the left"
+  panel — on a screen with no left — and its ✕ was the only way out, straight
+  into that dead end. It now sits between the header and the tab bar and IS
+  the screen; the ✕ and the scrim appear only when there is a chat behind it.
+- **Three bottom tabs instead of four.** "Contacts" and "Calls" both opened
+  the direct-chats folder, so three of four tabs showed the same view. A real
+  calls tab needs a call-history surface that neither side has yet, so the
+  decoy is gone; a test now fails if two tabs ever resolve to the same action.
+- The backup nag is one line on a phone instead of three (it cost ~110px
+  above the messages on every launch); the full explanation stays on wider
+  screens. Dialog close buttons and the end-guest-chat control are 44px on
+  touch, and the first-run card gets phone padding.
+
 #### Added
 - **Key string** (`otk1.…`): the key file's payload as one line for a field
   in 1Password, Bitwarden, KeePass or a note. Copy it from the

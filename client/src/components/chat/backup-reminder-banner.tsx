@@ -18,6 +18,11 @@ import { isBackupPending } from '@/lib/backup-reminder'
  * This is a nag, not a gate: it can be hidden for the current session, but it
  * comes back on the next launch and only disappears for good once the key file
  * is saved or the recovery phrase is enrolled.
+ *
+ * On a phone it is ONE line — title, action, dismiss. The three-line version
+ * cost ~110px above the message list on a 667px screen, every launch, to say
+ * something the user can act on in one tap. The full explanation stays at
+ * `sm` and up, where the room is free.
  */
 export function BackupReminderBanner({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const userId = useSessionStore((s) => s.userId)
@@ -41,26 +46,28 @@ export function BackupReminderBanner({ onOpenSettings }: { onOpenSettings?: () =
   return (
     <div
       role="status"
-      className={`mx-3 mb-2 flex items-start gap-3 px-4 py-3 text-[11px] ${
+      className={`mx-3 mb-2 flex items-center gap-2 px-3 py-2 text-[11px] sm:items-start sm:gap-3 sm:px-4 sm:py-3 ${
         isMd3
           ? 'rounded-2xl border border-[color-mix(in_srgb,var(--neon-red)_35%,transparent)] bg-[color-mix(in_srgb,var(--neon-red)_10%,transparent)] text-[var(--on-surface)]'
           : 'border border-neon-red/50 bg-danger/10 text-text-primary'
       }`}
     >
-      <span aria-hidden className="mt-[1px]">🔑</span>
-      <div className="flex-1">
-        <p className="font-medium">{t('backupReminder.title')}</p>
-        <p className="mt-1 leading-relaxed text-text-muted">{t('backupReminder.body')}</p>
-        <div className="mt-2 flex flex-wrap gap-3">
+      <span aria-hidden className="shrink-0 sm:mt-[1px]">🔑</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
+        <p className="min-w-0 flex-1 truncate font-medium sm:overflow-visible sm:whitespace-normal">
+          {t('backupReminder.title')}
+        </p>
+        <p className="mt-1 hidden leading-relaxed text-text-muted sm:block">{t('backupReminder.body')}</p>
+        <div className="flex shrink-0 items-center gap-1 sm:mt-2 sm:flex-wrap sm:gap-3">
           {onOpenSettings && (
             <button
               type="button"
               onClick={onOpenSettings}
-              className={
+              className={`min-h-[36px] shrink-0 ${
                 isMd3
                   ? 'rounded-full bg-[var(--neon-red)] px-3 py-1 text-[11px] font-medium text-[var(--surface)]'
                   : 'border border-neon-red px-3 py-1 text-[10px] uppercase tracking-widest text-neon-red'
-              }
+              }`}
             >
               {t('backupReminder.action')}
             </button>
@@ -68,7 +75,7 @@ export function BackupReminderBanner({ onOpenSettings }: { onOpenSettings?: () =
           <button
             type="button"
             onClick={() => setHiddenForNow(true)}
-            className="text-[10px] text-text-muted/70 underline-offset-2 hover:underline"
+            className="min-h-[36px] shrink-0 px-2 text-[10px] text-text-muted/70 underline-offset-2 hover:underline"
           >
             {t('backupReminder.later')}
           </button>

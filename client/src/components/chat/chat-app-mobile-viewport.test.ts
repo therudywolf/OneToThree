@@ -140,14 +140,22 @@ describe('mobile viewport — chat shell structure', () => {
     )
   })
 
-  it('the mobile sidebar drawer no longer hardcodes the chrome-inclusive height var', () => {
-    // `h-[var(--p13-app-height)]` reintroduced the overflow on the fixed drawer.
-    // Mobile height now comes from the svh-clamped `.chat-layout-sidebar` rule.
+  it('the mobile chat list is anchored to the layout container, not the viewport', () => {
+    // Two invariants in one class string:
+    //   - `h-[var(--p13-app-height)]` reintroduced the overflow on the drawer;
+    //     mobile height comes from the svh-clamped `.chat-layout-sidebar` rule.
+    //   - `fixed` spanned the whole viewport, so the chat list covered the
+    //     bottom tab bar and the app header and read as a drawer over nothing.
+    //     `absolute` keeps it inside `.chat-ultrawide-container`, i.e. between
+    //     the header and the tab bar, which is what makes it the phone's
+    //     start screen.
     const sidebarClass =
-      chatAppTsx.match(/className=\{`chat-layout-sidebar fixed[^`]*`/)?.[0] ?? ''
+      chatAppTsx.match(/className=\{`chat-layout-sidebar [^`]*`/)?.[0] ?? ''
     expect(sidebarClass, 'sidebar drawer className must exist').not.toBe('')
     expect(sidebarClass).not.toContain('h-[var(--p13-app-height)]')
     expect(sidebarClass).not.toContain('max-h-[var(--p13-app-height)]')
+    expect(sidebarClass).toContain('absolute')
+    expect(sidebarClass).not.toMatch(/(?:^|\s)fixed(?:\s|$)/)
   })
 
   it('the chat message list stays a scrollable flex child (min-h-0 + overflow-y-auto)', () => {

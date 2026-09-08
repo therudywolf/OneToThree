@@ -118,7 +118,7 @@ export function WelcomeScreen({ onContinue }: Props) {
             first?.focus()
           }
         }}
-        className={`relative w-full max-w-2xl outline-none ${cardShape} p-8`}
+        className={`relative w-full max-w-2xl outline-none ${cardShape} p-5 sm:p-8`}
       >
         <h2 id={titleId} className="sr-only">
           {t('welcome.title')}

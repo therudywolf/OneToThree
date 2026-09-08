@@ -508,7 +508,6 @@ const en = {
 
   'mobileNav.chats': 'Chats',
   'mobileNav.contacts': 'Contacts',
-  'mobileNav.calls': 'Calls',
   'mobileNav.settings': 'Settings',
 
   'emoji.pickerToggle': 'Emoji',

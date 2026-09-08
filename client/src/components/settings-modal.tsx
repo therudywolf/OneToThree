@@ -909,7 +909,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           <button type="button" onClick={onClose}
             aria-label={t('common.close')}
             title={t('common.close')}
-            className={`grid h-7 w-7 shrink-0 place-items-center rounded-full transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'p13-classic-button shadow-none' : 'text-neon-red hover:bg-neon-cyan/10 hover:text-neon-cyan'}`}>
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition-all duration-200 ease-in-out active:scale-95 sm:h-7 sm:w-7 ${isMd3 ? 'text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'p13-classic-button shadow-none' : 'text-neon-red hover:bg-neon-cyan/10 hover:text-neon-cyan'}`}>
             <X className="h-4 w-4" />
           </button>
         </header>

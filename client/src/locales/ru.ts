@@ -510,7 +510,6 @@ const ru = {
 
   'mobileNav.chats': 'Чаты',
   'mobileNav.contacts': 'Контакты',
-  'mobileNav.calls': 'Звонки',
   'mobileNav.settings': 'Настройки',
 
   'emoji.pickerToggle': 'Эмодзи',

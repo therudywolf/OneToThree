@@ -1,11 +1,17 @@
 /**
  * Maps a compact-layout bottom-nav tab to a concrete UI action.
  *
- * The compact (mobile) layout has exactly two list surfaces: the chat-list
- * sidebar (which carries a folder rail) and the settings modal. The bottom
- * nav therefore drives those two surfaces — it does not have dedicated
- * "contacts" or "calls" screens, so the contacts/calls tabs focus the
- * matching system folder inside the sidebar instead.
+ * The compact (mobile) layout has two list surfaces: the chat-list sidebar
+ * (which carries a folder rail) and the settings modal. Every tab must land on
+ * a DIFFERENT one of them — "chats" shows everything, "contacts" narrows the
+ * same list to 1:1 conversations, "settings" opens the modal.
+ *
+ * There is no "calls" tab. There used to be, and it resolved to the same
+ * direct-chats folder as "contacts": three of four tabs opened the same view,
+ * which reads as a broken app rather than a compact one. A real calls tab
+ * needs a call-history surface, and neither the client nor the server has one
+ * (`callSessions` is written but never listed back) — so the tab is gone until
+ * that exists, rather than sitting there as a decoy.
  *
  * Kept as a pure, side-effect-free mapping so it can be unit-tested without
  * rendering the React tree (vitest runs in a `node` environment here).
@@ -32,10 +38,6 @@ export function resolveMobileNavAction(tab: MobileNavTab): MobileNavAction {
       return { kind: 'sidebar', folderId: 'all' }
     case 'contacts':
       // 1:1 conversations are the closest thing to a contact list.
-      return { kind: 'sidebar', folderId: 'direct' }
-    case 'calls':
-      // No dedicated call-history surface exists; calls happen inside direct
-      // chats, so route the tab to the direct-chats folder.
       return { kind: 'sidebar', folderId: 'direct' }
     case 'settings':
       return { kind: 'settings' }

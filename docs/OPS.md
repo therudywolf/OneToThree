@@ -257,10 +257,14 @@ in), and that two allocations still reach each other (`--relay-to-relay allow`).
 `--transport tcp` and `--transport tls --servername <host>` cover 3478/tcp and
 5349; `--user turn --password-env OLD_PASSWORD --expect-rejected` proves a retired
 password no longer works. The exit status is 1 when any check fails. Run it after
-**any** recreate of coturn: the `cap_drop: [ALL]` + `cap_add` pair in
-`docker-compose.prod.yml` is there because a bare `cap_drop: [ALL]` makes this
-image's `turnserver` fail to start, and that sat in the file unnoticed until the
-container was next recreated.
+**any** recreate of coturn, over all three transports (udp, tcp, tls): the
+`cap_drop: [ALL]` + `cap_add: [NET_BIND_SERVICE, DAC_READ_SEARCH]` pair in
+`docker-compose.prod.yml` exists because a bare `cap_drop: [ALL]` makes this
+image's `turnserver` fail to start, and because without the read-only
+`DAC_READ_SEARCH` root in the container cannot read the 0640 TLS key mounted
+from the host, so coturn starts *without* TURNS on :5349 and logs one warning —
+both sat unnoticed until the container was next recreated, and the second one is
+only visible to a probe that actually opens `--transport tls`.
 
 ## Metrics
 

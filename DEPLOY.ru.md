@@ -95,6 +95,13 @@ sudo ufw allow 50000:50100/udp
 sudo ufw reload
 ```
 
+> **TURN и регистрация.** api выдаёт любому вошедшему аккаунту временные
+> креды coturn, поэтому при открытой по умолчанию регистрации ваше реле может
+> использовать любой желающий. Если инстанс не предназначен для публики,
+> поставьте `FEATURE_OPEN_REGISTRATION=0` в `.env.prod` (или выключите в
+> админке) и приглашайте людей. Как устроены креды, ограничения пиров и проверка:
+> [docs/OPS.md → TURN relay hardening](docs/OPS.md#turn-relay-hardening).
+
 ---
 
 ### 4 · Запустить
@@ -108,7 +115,7 @@ chmod +x ./startup.sh
 
 1. Проверяет наличие Docker, openssl, curl
 2. Спрашивает домен, ACME email, публичный IP сервера и контактный email для VAPID
-3. **Генерирует все секреты** — пароль БД, MinIO, JWT, TURN, VAPID-ключи, LiveKit API key/secret
+3. **Генерирует все секреты** — пароль БД, MinIO, JWT, секрет TURN, VAPID-ключи, LiveKit API key/secret
 4. Записывает `.env.prod` со всеми нужными значениями (включая `DOMAIN=` для Caddyfile)
 5. Собирает и запускает 8 контейнеров: Caddy, Next.js, Fastify API, PostgreSQL, Redis, MinIO, coturn, LiveKit
 6. Ожидает прохождения health-проверок

@@ -95,6 +95,13 @@ sudo ufw allow 50000:50100/udp
 sudo ufw reload
 ```
 
+> **TURN and registration.** The api hands every signed-in account time-limited
+> coturn credentials, so with the default open registration "anyone on the
+> internet" can use your relay. On an instance that is not meant to be public,
+> set `FEATURE_OPEN_REGISTRATION=0` in `.env.prod` (or turn it off in the admin
+> settings) and invite people instead. How the credentials, the peer limits and
+> the probe work: [docs/OPS.md → TURN relay hardening](docs/OPS.md#turn-relay-hardening).
+
 ---
 
 ### 4 · Launch
@@ -108,7 +115,7 @@ The script does everything on first run:
 
 1. Checks that Docker, openssl, curl are installed
 2. Asks for your domain, ACME email, server public IP, and VAPID contact email
-3. **Auto-generates all secrets** — DB password, MinIO password, JWT, TURN password, VAPID key pair, LiveKit API key/secret
+3. **Auto-generates all secrets** — DB password, MinIO password, JWT, TURN auth secret, VAPID key pair, LiveKit API key/secret
 4. Writes `.env.prod` with all required values (including `DOMAIN=` for Caddyfile)
 5. Builds and starts 8 containers: Caddy, Next.js, Fastify API, PostgreSQL, Redis, MinIO, coturn, LiveKit
 6. Waits for health checks to pass

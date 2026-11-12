@@ -19,7 +19,7 @@
 #   ./startup.sh turn-sync — синхронизировать TLS cert Caddy → coturn
 #   ./startup.sh backup   — резервная копия БД
 #
-# Compose подставляет ${TURN_PASSWORD} и др. в docker-compose.prod.yml из файла
+# Compose подставляет ${TURN_EXTERNAL_IP} и др. в docker-compose.prod.yml из файла
 # `.env` в корне репозитория. Скрипт зеркалит .env.prod → .env и подтягивает TURN_*
 # из ./secrets/, чтобы даже «голый» docker compose -f docker-compose.prod.yml ps
 # не падал на интерполяции coturn.
@@ -286,14 +286,8 @@ prime_compose_interpolation_env() {
   [[ -f "$ENV_FILE" ]] || return 0
 
   if [[ -f "$SECRETS_DONE" ]]; then
-    if [[ -f "$SECRETS_DIR/turn_password" ]] && [[ -s "$SECRETS_DIR/turn_password" ]]; then
-      local tp cur
-      tp="$(tr -d '\r\n' < "$SECRETS_DIR/turn_password")"
-      cur="$(val_for_key TURN_PASSWORD)"
-      if [[ -z "$cur" ]] || is_placeholder "$cur" || [[ "$cur" != "$tp" ]]; then
-        update_key TURN_PASSWORD "$tp"
-      fi
-    fi
+    # (No TURN password to mirror any more: coturn and the api both read
+    # secrets/turn_auth_secret as a file — see docker/coturn/entrypoint.sh.)
     if [[ -f "$SECRETS_DIR/turn_external_ip" ]] && [[ -s "$SECRETS_DIR/turn_external_ip" ]]; then
       local te cur_ip
       te="$(tr -d '\r\n' < "$SECRETS_DIR/turn_external_ip")"
@@ -710,6 +704,21 @@ if [[ -d "$SECRETS_DIR" && "$STARTUP_CMD" != "doctor" ]]; then
     if [[ ${#tw} -ne 64 ]] || ! [[ "$tw" =~ ^[0-9a-fA-F]{64}$ ]]; then
       die "Неверный формат secrets/totp_wrap_key: нужны ровно 64 hex-символа (openssl rand -hex 32). Без этого API в production не стартует. Если файл испорчен, а 2FA уже использовалась, восстановите прежний ключ из backup — иначе зашифрованные TOTP в БД не расшифровать."
     fi
+  fi
+fi
+# turn_auth_secret is mandatory too: the api signs per-user, time-limited TURN
+# credentials with it and coturn verifies them with the very same file. There is
+# no shared TURN password any more, so an install that still has the old
+# secrets/turn_password gets this one generated on its next start — no manual
+# step. Mode 0644 on purpose (the api runs as uid 1001 and the file is written by
+# the deploying user; the 0700 directory is the real gate — see generate-secrets.sh).
+# `mesh` is the exception: a helper node must hold the PRIMARY host's secret, so
+# a generated one would be silently wrong there.
+if [[ -d "$SECRETS_DIR" && "$STARTUP_CMD" != "doctor" && "$STARTUP_CMD" != "mesh" ]]; then
+  if [[ ! -s "$SECRETS_DIR/turn_auth_secret" ]]; then
+    printf '%s' "$(openssl rand -hex 32)" > "$SECRETS_DIR/turn_auth_secret"
+    chmod 644 "$SECRETS_DIR/turn_auth_secret"
+    warn "Сгенерирован turn_auth_secret (подпись временных TURN-кредов). api и coturn подхватят его при пересоздании контейнеров: scripts/deploy-prod.sh api coturn."
   fi
 fi
 
@@ -1135,7 +1144,7 @@ case "$CMD" in
     if [[ ! -f "$MESH_ENV_FILE" ]]; then
       [[ -f "$MESH_ENV_TEMPLATE" ]] || die "Не найден ${MESH_ENV_TEMPLATE}"
       cp "$MESH_ENV_TEMPLATE" "$MESH_ENV_FILE"
-      warn "Создан ${MESH_ENV_FILE}. Заполните TURN_REALM, TURN_EXTERNAL_IP и TURN_PASSWORD."
+      warn "Создан ${MESH_ENV_FILE}. Заполните TURN_REALM и TURN_EXTERNAL_IP, а secrets/turn_auth_secret скопируйте с основного сервера."
       warn "Для полного cluster mesh используйте cluster_join_token и internal_api_signing_key из ./secrets."
       echo -e "  Затем повторите: ${BLD}./startup.sh mesh${NC}"
       exit 0
@@ -1165,8 +1174,11 @@ case "$CMD" in
 
     mesh_check_required TURN_REALM "Например: turn.example.com или ваш основной домен."
     mesh_check_required TURN_EXTERNAL_IP "Укажите публичный IP helper-ноды."
-    mesh_check_required TURN_PASSWORD "Укажите тот же TURN password, который знают клиенты."
-    mesh_check_required TURN_USERNAME "Обычно достаточно оставить turn."
+    # Credentials are time-limited and signed by the main api; this node only
+    # verifies them, so it needs the primary host's secret byte for byte.
+    if [[ ! -s "$SECRETS_DIR/turn_auth_secret" ]]; then
+      die "Нет ${SECRETS_DIR}/turn_auth_secret. Скопируйте этот файл с основного сервера (права 0644, каталог secrets — 0700): helper-нода только проверяет временные TURN-креды, подписанные им."
+    fi
 
     log "Запускаю helper-node mesh (TURN relay)..."
     "${MESH_DC[@]}" -f "$MESH_COMPOSE_FILE" --env-file "$MESH_ENV_FILE" up -d
@@ -1293,8 +1305,6 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo -e "    ${YEL}POSTGRES_PASSWORD${NC}   — пароль базы данных"
     echo -e "    ${YEL}MINIO_ROOT_PASSWORD${NC} — пароль хранилища"
     echo -e "    ${YEL}TURN_EXTERNAL_IP${NC}    — IP сервера (curl -s ifconfig.me)"
-    echo -e "    ${YEL}TURN_PASSWORD${NC}       — пароль TURN"
-    echo -e "    ${YEL}NEXT_PUBLIC_TURN_PASSWORD${NC} — тот же пароль TURN"
     echo -e "    ${YEL}NEXT_PUBLIC_TURN_URLS${NC} — список fallback URL (turn/turns)"
     echo -e "    ${YEL}VAPID_SUBJECT${NC}       — ваш email"
     echo ""
@@ -1329,8 +1339,6 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
   sync_secret_to_env "jwt_secret"           "JWT_SECRET"
   sync_secret_to_env "webhook_secret"       "WEBHOOK_SECRET"
   sync_secret_to_env "totp_wrap_key"        "TOTP_WRAP_KEY"
-  sync_secret_to_env "turn_password"        "TURN_PASSWORD"
-  sync_secret_to_env "turn_password"        "NEXT_PUBLIC_TURN_PASSWORD"
   sync_secret_to_env "cluster_join_token"   "CLUSTER_JOIN_TOKEN"
   sync_secret_to_env "internal_api_signing_key" "INTERNAL_API_SIGNING_KEY"
   sync_secret_to_env "backup_encryption_key" "BACKUP_ENCRYPTION_KEY"
@@ -1393,18 +1401,6 @@ if [[ -z "${TOTP_WRAP:-}" ]] || is_placeholder "$TOTP_WRAP"; then
   ok "TOTP_WRAP_KEY сгенерирован (AES-256-GCM для шифрования TOTP секретов в БД)."
 fi
 
-TURN_PASS=$(val_for_key TURN_PASSWORD)
-TURN_PUB_PASS=$(val_for_key NEXT_PUBLIC_TURN_PASSWORD)
-if [[ -n "$TURN_PASS" ]] && ! is_placeholder "$TURN_PASS" && is_placeholder "$TURN_PUB_PASS"; then
-  update_key NEXT_PUBLIC_TURN_PASSWORD "$TURN_PASS"
-  ok "NEXT_PUBLIC_TURN_PASSWORD синхронизирован."
-fi
-TURN_USER=$(val_for_key TURN_USERNAME)
-TURN_PUB_USER=$(val_for_key NEXT_PUBLIC_TURN_USERNAME)
-if [[ -n "$TURN_USER" ]] && ! is_placeholder "$TURN_USER" && is_placeholder "$TURN_PUB_USER"; then
-  update_key NEXT_PUBLIC_TURN_USERNAME "$TURN_USER"
-  ok "NEXT_PUBLIC_TURN_USERNAME синхронизирован."
-fi
 TURN_PUB_URL=$(val_for_key NEXT_PUBLIC_TURN_URL)
 TURN_PUB_URLS=$(val_for_key NEXT_PUBLIC_TURN_URLS)
 if [[ -n "$TURN_PUB_URL" ]] && ! is_placeholder "$TURN_PUB_URL" && is_placeholder "$TURN_PUB_URLS"; then
@@ -1541,8 +1537,7 @@ check_required POSTGRES_PASSWORD      "Придумайте надёжный п�
 check_required MINIO_ROOT_PASSWORD    "Придумайте надёжный пароль для хранилища файлов"
 check_required CORS_ORIGIN            "Домен сайта: https://onetothree.ru"
 check_required TURN_EXTERNAL_IP       "Внешний IP TURN-реле (обычно определяется автоматически)"
-check_required TURN_PASSWORD          "Придумайте пароль для TURN"
-check_required VAPID_SUBJECT          "Ваш email: mailto:you@example.com"
+check_required VAPID_SUBJECT         "Ваш email: mailto:you@example.com"
 check_required ACME_EMAIL             "Email для Let's Encrypt: admin@onetothree.ru"
 
 if [[ "$MISSING" -ne 0 ]]; then

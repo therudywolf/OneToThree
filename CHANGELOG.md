@@ -39,8 +39,14 @@ coturn 4.13.1 with the new `scripts/turn-probe.mjs`, not read off the config.
 - **`cap_drop: [ALL]` on coturn made the container unable to start** ("operation
   not permitted" in exec: the image's `turnserver` carries a file capability).
   It had sat in `docker-compose.prod.yml` unnoticed because nothing recreated the
-  container. `cap_add: [NET_BIND_SERVICE]` is added back — still no other
-  capability.
+  container. `cap_add: [NET_BIND_SERVICE]` is added back.
+- **…and the first recreate then started coturn without TURNS (:5349).** The TLS
+  key is bind-mounted from the deploying user's directory (mode 0640, owned by
+  that user); root in a container with no capabilities is not its owner, so
+  coturn logged "cannot find certificate file" and carried on with plain TURN
+  only. `cap_add` gains `DAC_READ_SEARCH` (read-only; the container sees nothing
+  but its own mounts). Found by running the probe over `--transport tls` right
+  after the deploy — `docs/OPS.md` now says to probe all three transports.
 - **Long calls survive the shorter credentials.** An ICE restart (network change,
   wake from sleep) re-fetches the ICE servers first when the connection's own are
   within 10 minutes of expiry; before, it would have restarted with a username

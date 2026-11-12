@@ -234,11 +234,16 @@ describe('the committed coturn configuration', () => {
       assert.match(compose, /tmpfs:\s*\n\s*- \/run\/coturn/)
     })
 
-    test(`${file}: coturn keeps exactly one capability — the one its binary needs to exec`, () => {
+    test(`${file}: coturn drops every capability except what it provably needs`, () => {
       const compose = read(file)
       assert.match(compose, /cap_drop: \[ALL\]/)
-      assert.match(compose, /cap_add: \[NET_BIND_SERVICE\]/)
       assert.match(compose, /no-new-privileges:true/)
+      // NET_BIND_SERVICE: the binary's file capability, without which exec fails.
+      // DAC_READ_SEARCH: root in the container is not the owner of the 0640 TLS
+      // key mounted from the host; without it TURNS on :5349 silently never starts.
+      // Only the file that mounts that key needs the second one.
+      const wanted = compose.includes('/etc/coturn/tls') ? '\\[NET_BIND_SERVICE, DAC_READ_SEARCH\\]' : '\\[NET_BIND_SERVICE\\]'
+      assert.match(compose, new RegExp(`cap_add: ${wanted}`))
     })
   }
 

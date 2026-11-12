@@ -271,7 +271,7 @@ When you run `./startup.sh` for the first time, here is what happens step by ste
 1. **Dependency check** — verifies Docker, Docker Compose, openssl, and curl are installed
 2. **Volume check** — reports whether existing data volumes are found (they won't exist on first run)
 3. **Secret generation**:
-   - Auto-generates: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_PASSWORD`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
+   - Auto-generates: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_AUTH_SECRET`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
    - Prompts you for: domain, ACME email, TURN external IP, VAPID contact email
    - Generates VAPID key pair (via Docker — requires pulling `node:20-alpine`)
    - Writes all secrets to `./secrets/` as individual files (Docker secrets format)

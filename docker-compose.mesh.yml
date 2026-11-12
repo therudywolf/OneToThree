@@ -1,23 +1,49 @@
 name: forestmessenger-mesh
 
+# A dedicated TURN relay on a second server. It runs the SAME coturn setup as
+# the primary host: docker/coturn/turnserver.conf (private ranges refused as
+# peers, no TCP relay) through docker/coturn/entrypoint.sh. It used to start with
+# `-n`, which ignores that file — a helper node therefore had none of those
+# protections — and with a static `--user=turn:<password>`, which the api no
+# longer issues.
+#
+# Credentials are the TURN REST API: the api signs per-user, time-limited
+# credentials with the TURN auth secret and this node only verifies them. Copy
+# secrets/turn_auth_secret from the primary host to ./secrets/turn_auth_secret
+# here (file mode 0644, directory mode 0700) before starting.
+
 services:
   coturn-helper:
     image: coturn/coturn:4.13.1
     restart: always
     network_mode: host
-    env_file:
-      - .env.mesh
+    user: root
+    # Everything but the one capability the turnserver binary's file capability
+    # needs to exec at all — see the coturn service in docker-compose.prod.yml.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    # No env_file: the node needs a realm, an address and the secret, nothing else.
+    secrets:
+      - turn_auth_secret
+    tmpfs:
+      - /run/coturn:mode=0700,size=1m
+    environment:
+      # Optional extra denied relay peers (entrypoint.sh).
+      TURN_DENIED_PEER_IPS: ${TURN_DENIED_PEER_IPS:-}
     volumes:
       - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./docker/coturn/entrypoint.sh:/usr/local/bin/forest-coturn-entrypoint.sh:ro
+    entrypoint: ['/usr/local/bin/forest-coturn-entrypoint.sh']
+    # No TLS directory is mounted here, so the entrypoint starts plain TURN only.
     command:
-      - -n
       - --log-file=stdout
-      - --listening-port=3478
       - --min-port=49152
       - --max-port=65535
-      - --fingerprint
-      - --lt-cred-mech
-      - --no-multicast-peers
       - --realm=${TURN_REALM:?set TURN_REALM in .env.mesh}
-      - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.mesh}
       - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP in .env.mesh}
+
+secrets:
+  turn_auth_secret:
+    file: ./secrets/turn_auth_secret

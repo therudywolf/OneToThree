@@ -40,7 +40,10 @@ MINIO_ROOT_PASSWORD=$(openssl rand -hex 24)
 JWT_SECRET=$(openssl rand -hex 32)
 WEBHOOK_SECRET=$(openssl rand -hex 32)
 TOTP_WRAP_KEY=$(openssl rand -hex 32)
-TURN_PASSWORD=$(openssl rand -hex 16)
+# TURN REST API secret: the api signs per-user, time-limited coturn credentials
+# with it and coturn verifies them with the same value (docker/coturn/entrypoint.sh).
+# There is deliberately no shared TURN password.
+TURN_AUTH_SECRET=$(openssl rand -hex 32)
 BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 INTERNAL_API_SIGNING_KEY=$(openssl rand -hex 32)
 CLUSTER_JOIN_TOKEN=$(openssl rand -hex 24)
@@ -144,7 +147,7 @@ echo -n "$MINIO_ROOT_PASSWORD"  > "$SECRETS_DIR/minio_root_password"
 echo -n "$JWT_SECRET"           > "$SECRETS_DIR/jwt_secret"
 echo -n "$WEBHOOK_SECRET"       > "$SECRETS_DIR/webhook_secret"
 echo -n "$TOTP_WRAP_KEY"        > "$SECRETS_DIR/totp_wrap_key"
-echo -n "$TURN_PASSWORD"        > "$SECRETS_DIR/turn_password"
+echo -n "$TURN_AUTH_SECRET"     > "$SECRETS_DIR/turn_auth_secret"
 echo -n "$BACKUP_ENCRYPTION_KEY" > "$SECRETS_DIR/backup_encryption_key"
 echo -n "$INTERNAL_API_SIGNING_KEY" > "$SECRETS_DIR/internal_api_signing_key"
 echo -n "$CLUSTER_JOIN_TOKEN"   > "$SECRETS_DIR/cluster_join_token"
@@ -191,7 +194,7 @@ echo -e "║ ${YEL}POSTGRES_PASSWORD${NC}  : ${POSTGRES_PASSWORD}"
 echo -e "║ ${YEL}MINIO_PASSWORD${NC}     : ${MINIO_ROOT_PASSWORD}"
 echo -e "║ ${YEL}JWT_SECRET${NC}         : ${JWT_SECRET}"
 echo -e "║ ${YEL}WEBHOOK_SECRET${NC}     : ${WEBHOOK_SECRET}"
-echo -e "║ ${YEL}TURN_PASSWORD${NC}      : ${TURN_PASSWORD}"
+echo -e "║ ${YEL}TURN_AUTH_SECRET${NC}   : ${TURN_AUTH_SECRET}"
 echo -e "║ ${YEL}BACKUP_ENCRYPTION_KEY${NC}: ${BACKUP_ENCRYPTION_KEY}"
 echo -e "║ ${YEL}INTERNAL_API_SIGNING_KEY${NC}: ${INTERNAL_API_SIGNING_KEY}"
 echo -e "║ ${YEL}CLUSTER_JOIN_TOKEN${NC}  : ${CLUSTER_JOIN_TOKEN}"

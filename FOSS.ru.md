@@ -518,7 +518,7 @@ cd OneToThree
 | `POSTGRES_PASSWORD` | Нет | Пароль БД |
 | `MINIO_ROOT_PASSWORD` | Нет | Пароль S3-хранилища |
 | `TURN_EXTERNAL_IP` | Нет | Внешний IP сервера |
-| `TURN_PASSWORD` | Нет | Данные доступа TURN |
+| `TURN_AUTH_SECRET` | **Да** | Подписывает временные TURN-креды каждого пользователя (файл в `./secrets/`, не переменная окружения) |
 | `CORS_ORIGIN` | Нет | Основной домен |
 | `VAPID_SUBJECT` | Нет | Контакт для push |
 | `JWT_SECRET` | **Да** | Ключ подписи сессий |
@@ -526,7 +526,7 @@ cd OneToThree
 | `VAPID_PUBLIC_KEY` | **Да** | Публичный push-ключ |
 | `VAPID_PRIVATE_KEY` | **Да** | Приватный push-ключ |
 | `DATABASE_URL` | **Да** | Собирается из `POSTGRES_*` |
-| `NEXT_PUBLIC_TURN_*` | **Да** | Синхронизируется из `TURN_*` |
+| `NEXT_PUBLIC_TURN_URL(S)` | **Да** | Список TURN URL, выводится из домена |
 
 ---
 

@@ -731,7 +731,7 @@ cd OneToThree
 | `POSTGRES_PASSWORD` | No | Database password |
 | `MINIO_ROOT_PASSWORD` | No | S3 storage password |
 | `TURN_EXTERNAL_IP` | No | Server public IP (`curl -s ifconfig.me`) |
-| `TURN_PASSWORD` | No | TURN relay credential |
+| `TURN_AUTH_SECRET` | **Yes** | Signs the per-user, time-limited TURN credentials (a file in `./secrets/`, not an env value) |
 | `CORS_ORIGIN` | No | Your domain (e.g., `https://yourdomain.com`) |
 | `VAPID_SUBJECT` | No | Email for push (e.g., `mailto:you@domain.com`) |
 | `JWT_SECRET` | **Yes** | Session signing key |
@@ -739,7 +739,7 @@ cd OneToThree
 | `VAPID_PUBLIC_KEY` | **Yes** | Push notification public key |
 | `VAPID_PRIVATE_KEY` | **Yes** | Push notification private key |
 | `DATABASE_URL` | **Yes** | Synced from POSTGRES_* |
-| `NEXT_PUBLIC_TURN_*` | **Yes** | Synced from TURN_* |
+| `NEXT_PUBLIC_TURN_URL(S)` | **Yes** | TURN URL list, derived from the domain |
 
 ---
 

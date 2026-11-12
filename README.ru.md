@@ -269,7 +269,7 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 1. **Проверка зависимостей** — убеждается, что Docker, Docker Compose, openssl и curl установлены
 2. **Проверка томов** — сообщает, найдены ли существующие тома с данными (при первом запуске их не будет)
 3. **Генерация секретов**:
-   - Автоматически генерирует: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_PASSWORD`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
+   - Автоматически генерирует: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_AUTH_SECRET`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
    - Запрашивает: домен, email для ACME, внешний IP для TURN, контактный email для VAPID
    - Генерирует пару VAPID-ключей (через Docker — потребуется загрузка `node:20-alpine`)
    - Записывает все секреты в `./secrets/` как отдельные файлы (формат Docker secrets)

@@ -91,32 +91,76 @@ function toOrderedTurnCandidates(base: string, tlsPorts: number[], includeTls: b
 }
 
 /**
- * Coturn with `--use-auth-secret --static-auth-secret=…` expects time-limited
- * credentials: `username = expiryUnix:userId`, `credential = base64(HMAC-SHA1(secret, username))`.
- * Use `TURN_AUTH_SECRET` / `TURN_AUTH_SECRET_FILE` (same value as coturn's static-auth-secret).
+ * Coturn runs with `use-auth-secret` / `static-auth-secret=…` (TURN REST API):
+ * each user gets time-limited credentials — `username = expiryUnix:userId`,
+ * `credential = base64(HMAC-SHA1(secret, username))`. The secret is
+ * `TURN_AUTH_SECRET` / `TURN_AUTH_SECRET_FILE`, the same value coturn holds.
  *
- * Legacy long-term TURN user/password: set `TURN_USERNAME` and `TURN_PASSWORD` / `TURN_SECRET`
- * (password only — do not set `TURN_AUTH_SECRET` unless you intend HMAC mode).
+ * There is deliberately NO static user/password path. A shared TURN password
+ * handed to every signed-in user is a credential that never expires and that
+ * every account ever created has seen; with open registration that is "anyone".
+ * `TURN_USERNAME` / `TURN_PASSWORD` / `TURN_SECRET` / `TURN_CREDENTIAL` are
+ * therefore never read, so a leftover value in .env.prod cannot be issued.
  */
+export const DEFAULT_TURN_CREDENTIAL_TTL_SEC = 2 * 60 * 60
+const MIN_TURN_CREDENTIAL_TTL_SEC = 60
+const MAX_TURN_CREDENTIAL_TTL_SEC = 24 * 60 * 60
+
+/**
+ * How long issued TURN credentials live. Short on purpose: what a client holds
+ * is only useful until it expires. coturn also needs them valid for every
+ * Allocate *refresh*, so a call that outlives them loses its relay at the next
+ * refresh — the client re-fetches before an ICE restart (lib/ice-servers.ts)
+ * to recover. Anything outside 60 s .. 24 h falls back to the default rather
+ * than to a long-lived value.
+ */
+export function turnCredentialTtlSec(raw: string | undefined = process.env.TURN_CREDENTIAL_TTL_SEC): number {
+  const parsed = Number.parseInt(raw ?? '', 10)
+  if (!Number.isFinite(parsed)) return DEFAULT_TURN_CREDENTIAL_TTL_SEC
+  if (parsed < MIN_TURN_CREDENTIAL_TTL_SEC || parsed > MAX_TURN_CREDENTIAL_TTL_SEC) {
+    return DEFAULT_TURN_CREDENTIAL_TTL_SEC
+  }
+  return parsed
+}
+
 function buildEphemeralCoturnCredentials(
   authSecret: string,
   userId: string,
   ttlSec: number
-): { username: string; credential: string } {
+): { username: string; credential: string; expiresAt: number } {
   const exp = Math.floor(Date.now() / 1000) + ttlSec
   const username = `${exp}:${userId}`
   const credential = createHmac('sha1', authSecret).update(username).digest('base64')
-  return { username, credential }
+  // `expiresAt` is in milliseconds, like the Cloudflare path's, so the client
+  // cache treats both sources the same way.
+  return { username, credential, expiresAt: exp * 1000 }
 }
 
-function collectCoturnIceServers(userId: string): IceServerConfig[] {
-  const rawUrls = [process.env.TURN_URLS, process.env.TURN_URL]
-  const envAuthSecret = process.env.TURN_AUTH_SECRET?.trim()
-  const authSecret = envAuthSecret || readSecret('TURN_AUTH_SECRET')?.trim()
+let warnedLegacyTurnCredentials = false
 
-  const rawUser = (process.env.TURN_USERNAME || process.env.TURN_USER)?.trim()
-  const envStaticPassword = (process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
-  const rawPassword = envStaticPassword || readSecret('TURN_PASSWORD')?.trim()
+function collectCoturnIceServers(userId: string): { iceServers: IceServerConfig[]; expiresAt: number | null } | null {
+  const rawUrls = [process.env.TURN_URLS, process.env.TURN_URL]
+  const authSecret = readSecret('TURN_AUTH_SECRET')
+
+  if (!authSecret) {
+    // Say why, once: an operator upgrading from the static-password setup has
+    // TURN_PASSWORD in .env.prod and a working-looking config, and a bare
+    // "TURN_NOT_CONFIGURED" would send them looking at the wrong thing.
+    const legacy = ['TURN_USERNAME', 'TURN_USER', 'TURN_PASSWORD', 'TURN_SECRET', 'TURN_CREDENTIAL'].filter(
+      (name) => Boolean(process.env[name]?.trim())
+    )
+    if (legacy.length > 0 && !warnedLegacyTurnCredentials) {
+      warnedLegacyTurnCredentials = true
+      process.stderr.write(
+        `${JSON.stringify({
+          level: 'error',
+          msg: 'TURN static credentials are no longer supported and are ignored — set TURN_AUTH_SECRET (or TURN_AUTH_SECRET_FILE) to the value coturn holds as static-auth-secret',
+          ignored: legacy,
+        })}\n`
+      )
+    }
+    return null
+  }
 
   const includeTlsFallback = (process.env.TURN_ENABLE_TLS_FALLBACK ?? '1') !== '0'
   const parsedTlsPorts = parseTurnUrls(process.env.TURN_TLS_PORTS ?? '5349')
@@ -128,32 +172,14 @@ function collectCoturnIceServers(userId: string): IceServerConfig[] {
     .flatMap((v) => parseTurnUrls(v))
     .flatMap((u) => toOrderedTurnCandidates(u, tlsPorts, includeTlsFallback))
   const urls = Array.from(new Set(allCandidates.filter(isAllowedIceUrl))).slice(0, MAX_TURN_URL_CANDIDATES)
-  if (urls.length === 0) return []
+  if (urls.length === 0) return null
 
-  // Explicit env static credentials should override auth-secret/file defaults for testability and operator intent.
-  if (rawUser && envStaticPassword) {
-    return [{ urls, username: rawUser, credential: envStaticPassword }]
-  }
-
-  if (envAuthSecret) {
-    const ttlRaw = Number.parseInt(process.env.TURN_CREDENTIAL_TTL_SEC ?? '86400', 10)
-    const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 60 && ttlRaw <= 86400 * 7 ? ttlRaw : 86400
-    const { username, credential } = buildEphemeralCoturnCredentials(envAuthSecret, userId, ttlSec)
-    return [{ urls, username, credential }]
-  }
-
-  if (authSecret) {
-    const ttlRaw = Number.parseInt(process.env.TURN_CREDENTIAL_TTL_SEC ?? '86400', 10)
-    const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 60 && ttlRaw <= 86400 * 7 ? ttlRaw : 86400
-    const { username, credential } = buildEphemeralCoturnCredentials(authSecret, userId, ttlSec)
-    return [{ urls, username, credential }]
-  }
-
-  if (rawUser && rawPassword) {
-    return [{ urls, username: rawUser, credential: rawPassword }]
-  }
-
-  return []
+  const { username, credential, expiresAt } = buildEphemeralCoturnCredentials(
+    authSecret,
+    userId,
+    turnCredentialTtlSec()
+  )
+  return { iceServers: [{ urls, username, credential }], expiresAt }
 }
 
 function collectStunIceServers(): IceServerConfig[] {
@@ -214,11 +240,12 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
 
     if (!source) {
       const coturn = collectCoturnIceServers(user.id)
-      if (coturn.length > 0) {
-        iceServers.push(...coturn)
+      if (coturn) {
+        iceServers.push(...coturn.iceServers)
         source = 'coturn'
+        expiresAt = coturn.expiresAt
         app.log.info(
-          { uid: user.id, servers: coturn.length },
+          { uid: user.id, servers: coturn.iceServers.length },
           'ICE_CONFIG_GENERATED :: COTURN_SELF_HOSTED'
         )
       } else {
@@ -295,12 +322,13 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
         }
       } else if (mediaMode === 'self_hosted') {
         const coturn = collectCoturnIceServers(user.id)
-        if (coturn.length === 0) {
+        if (!coturn) {
           request.log.error('ice-servers: CALL_MEDIA_MODE=self_hosted but no coturn credentials configured')
           return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED', mediaMode })
         }
-        iceServers.push(...coturn)
+        iceServers.push(...coturn.iceServers)
         source = 'coturn'
+        expiresAt = coturn.expiresAt
       }
 
       if (!source || iceServers.length === 0) {

@@ -139,6 +139,7 @@ new value.
 |---|---|---|
 | `https://onetothree.ru/` 5xx | `journalctl -u onetothree-uptime.service -n 20` | `docker compose -f docker-compose.prod.yml logs --tail=200 web` |
 | `https://api.onetothree.ru/health` not 200 | `docker compose ... logs --tail=200 api` | restart api: `docker compose ... up -d --force-recreate api` |
+| `api.onetothree.ru` answers **404 `{"detail":"Not Found"}`** (a different framework's body) right after the api was recreated, while `docker exec forestmessenger-api-1 …/api/version` is fine | `docker exec infra-caddy getent hosts api` — more than one address, and the api's is not first | Caddy must proxy to the **container name**: `reverse_proxy forestmessenger-api-1:8080` in `~/stacks/caddy/sites/onetothree.ru.caddy` (then `caddy validate` + `caddy reload`), never to the generic alias `api`. The shared `edge` network also carries other stacks' `api` containers (`wolf4x-cloud-api` has the alias `api` too); which address Docker's DNS lists first follows container age, so recreating the api silently moved Caddy's traffic to the wrong service |
 | Caddy can't get TLS cert | `docker logs infra-caddy --tail=50` | DNS or rate-limit issue — wait, then `docker compose ... reload` |
 | Disk full | `df -h /` and `docker system df` | drop old media (lower retention) or prune docker images |
 | Last backup unknown | `systemctl status onetothree-backup.timer` | `systemctl start onetothree-backup.service` |

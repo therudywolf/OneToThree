@@ -30,7 +30,7 @@ import { useGroupCallStore } from '@/store/groupCallStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { lookupUsers } from '@/lib/api/users'
 import { KDF_CTX, deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
-import { getIceConfig, normalizeIceServers, type IceTransportPolicy } from '@/lib/ice-servers'
+import { getIceConfig, normalizeIceServers, refreshPeerIceServers, type IceTransportPolicy } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
@@ -572,6 +572,8 @@ export function useWebRTC(userId: string | null) {
           if (pc.iceConnectionState !== 'disconnected') return
           setReconnecting(true)
           try {
+            // TURN credentials expire; a call that outlived them restarts with fresh ones.
+            await refreshPeerIceServers(pc)
             pc.restartIce()
             await createAndSendOffer(peerId, pc, { iceRestart: true })
           } catch {
@@ -587,6 +589,7 @@ export function useWebRTC(userId: string | null) {
           setIceRetryCount(retryCount + 1)
           const retryTimer = window.setTimeout(async () => {
             try {
+              await refreshPeerIceServers(pc)
               pc.restartIce()
               await createAndSendOffer(peerId, pc, { iceRestart: true })
             } catch {
@@ -1345,12 +1348,15 @@ export function useWebRTC(userId: string | null) {
       pcsRef.current.forEach((pc, peerId) => {
         const s = pc.iceConnectionState
         if (s === 'disconnected' || s === 'failed') {
-          try {
-            pc.restartIce()
-            void createAndSendOffer(peerId, pc, { iceRestart: true })
-          } catch {
-            console.warn('[SYS.ICE] Visibility-triggered restart failed for', peerId.slice(0, 8))
-          }
+          void (async () => {
+            try {
+              await refreshPeerIceServers(pc)
+              pc.restartIce()
+              await createAndSendOffer(peerId, pc, { iceRestart: true })
+            } catch {
+              console.warn('[SYS.ICE] Visibility-triggered restart failed for', peerId.slice(0, 8))
+            }
+          })()
         }
       })
     }

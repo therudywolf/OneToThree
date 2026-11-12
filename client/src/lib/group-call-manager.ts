@@ -16,6 +16,7 @@ import { useCallStore } from '@/store/callStore'
 import type { GroupCallParticipant as _GroupCallParticipant } from '@/store/groupCallStore'
 import { getIceServers,
   normalizeIceServers,
+  refreshPeerIceServers,
 } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { lookupUsers } from '@/lib/api/users'
@@ -370,12 +371,16 @@ function createPeerConnection(
       }
     } else if (state === 'failed') {
       console.warn(`[GC.ICE] Connection failed to ${peerId.slice(0, 8)}, attempting restart`)
-      try {
-        pc.restartIce()
-        void sendGroupOffer(roomId, peerId, pc, { iceRestart: true })
-      } catch {
-        cleanupPeer(peerId)
-      }
+      void (async () => {
+        try {
+          // TURN credentials expire; a call that outlived them restarts with fresh ones.
+          await refreshPeerIceServers(pc)
+          pc.restartIce()
+          void sendGroupOffer(roomId, peerId, pc, { iceRestart: true })
+        } catch {
+          cleanupPeer(peerId)
+        }
+      })()
     } else if (state === 'disconnected') {
       const timer = window.setTimeout(() => {
         if (pc.iceConnectionState === 'disconnected') {

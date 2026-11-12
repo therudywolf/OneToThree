@@ -261,6 +261,62 @@ export async function getIceServers(options?: { forceRefresh?: boolean }): Promi
   return (await getIceConfig(options)).iceServers
 }
 
+/** Refresh when a live connection's TURN credentials have this long (or less) left. */
+const PEER_REFRESH_BEFORE_EXPIRY_MS = 10 * 60_000
+/** The refresh must never be what keeps a recovering call from restarting ICE. */
+const PEER_REFRESH_TIMEOUT_MS = 4_000
+
+/**
+ * Expiry (ms since the epoch) of the earliest time-limited coturn credential in
+ * `servers`, or null when there is none. The server signs
+ * `username = "<unix expiry>:<user id>"` (TURN REST API), so the connection's own
+ * configuration says how long it can still authenticate — no clock state of ours.
+ */
+function turnCredentialExpiryMs(servers: RTCIceServer[] | undefined): number | null {
+  let earliest: number | null = null
+  for (const server of servers ?? []) {
+    const match = typeof server.username === 'string' ? /^(\d{9,})(?::|$)/.exec(server.username) : null
+    if (!match) continue
+    const expiry = Number(match[1]) * 1000
+    if (earliest === null || expiry < earliest) earliest = expiry
+  }
+  return earliest
+}
+
+/**
+ * Puts freshly issued ICE servers on a LIVE connection, to be called right
+ * before `pc.restartIce()`.
+ *
+ * TURN credentials are short-lived (the api signs them for about two hours),
+ * and an RTCPeerConnection keeps the set it was built with. A call that has
+ * outlived them would restart ICE with a username coturn already refuses — and
+ * the relay candidate, the only kind a relay-only deployment allows, would never
+ * come back. Only connections whose credentials are expired or about to be are
+ * touched, so the common restart (a Wi-Fi blip a minute in) costs no request.
+ *
+ * Best effort by design: any failure (offline, 5xx, a closed connection,
+ * slow API) leaves the servers the connection already has.
+ */
+export async function refreshPeerIceServers(pc: RTCPeerConnection): Promise<void> {
+  try {
+    const current = pc.getConfiguration()
+    const expiry = turnCredentialExpiryMs(current.iceServers)
+    if (expiry === null || expiry - Date.now() > PEER_REFRESH_BEFORE_EXPIRY_MS) return
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const fresh = await Promise.race([
+      getIceConfig({ forceRefresh: true }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('ICE_REFRESH_TIMEOUT')), PEER_REFRESH_TIMEOUT_MS)
+      }),
+    ]).finally(() => clearTimeout(timer))
+
+    pc.setConfiguration({ ...current, iceServers: normalizeIceServers(fresh.iceServers) })
+  } catch {
+    // keep the credentials the connection already has
+  }
+}
+
 function mergeUnique(list: RTCIceServer[]): RTCIceServer[] {
   const seen = new Set<string>()
   const out: RTCIceServer[] = []

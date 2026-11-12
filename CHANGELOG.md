@@ -5,6 +5,65 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### 2026-11-12 — the TURN relay stops being a shared password
+
+A security review found that `/api/ice-servers` handed every signed-in account
+the same static coturn password, and that with registration open by default
+"signed-in" meant anyone. The coturn side of this was checked against a live
+coturn 4.13.1 with the new `scripts/turn-probe.mjs`, not read off the config.
+
+#### Security
+- **Per-user, time-limited TURN credentials.** coturn runs `use-auth-secret`;
+  the api signs `<expiry>:<user id>` with it (TURN REST API) and answers with the
+  expiry as `expiresAt`. Lifetime `TURN_CREDENTIAL_TTL_SEC`, default **2 hours**
+  (it was 24 h, and the static password never expired). The static
+  `TURN_USERNAME` / `TURN_PASSWORD` / `TURN_SECRET` path is **removed**, not
+  merely unused: the api never reads those variables, so a leftover value in
+  `.env.prod` cannot be issued (it logs one error naming them). `NEXT_PUBLIC_TURN_*`
+  credentials were never read by the client.
+- **The secret is a file, not an argument.** `secrets/turn_auth_secret` is mounted
+  into both the api and coturn; the coturn entrypoint appends it to a runtime
+  config on a tmpfs. The old `--user=turn:<password>` put a long-lived password
+  in `docker inspect` and `ps`. `generate-secrets.sh` creates the file and
+  `startup.sh` creates it on upgrade; a missing, short or odd-looking secret stops
+  coturn from starting instead of starting open.
+- **No RFC 6062 TCP relay** (`no-tcp-relay`): the way a TURN user opens TCP
+  connections from the relay to services on its host. Browsers never use it.
+- **The mesh helper node runs the same hardened config.** It started coturn with
+  `-n`, which ignores `turnserver.conf` — no private-range denial at all — and a
+  static `--user`.
+
+#### Fixed
+- **`cap_drop: [ALL]` on coturn made the container unable to start** ("operation
+  not permitted" in exec: the image's `turnserver` carries a file capability).
+  It had sat in `docker-compose.prod.yml` unnoticed because nothing recreated the
+  container. `cap_add: [NET_BIND_SERVICE]` is added back — still no other
+  capability.
+- **Long calls survive the shorter credentials.** An ICE restart (network change,
+  wake from sleep) re-fetches the ICE servers first when the connection's own are
+  within 10 minutes of expiry; before, it would have restarted with a username
+  coturn refuses and never got its relay back.
+
+#### Decided against
+- **The server's own public address stays off `denied-peer-ip`.** The api asks for
+  relay-only, so every call is relay ↔ relay and each leg's peer *is* that
+  address: denying it turned CreatePermission into `403 Forbidden IP` and broke
+  every call (measured). What it would have blocked is UDP to the host's public
+  address once TCP relay is gone; `docs/OPS.md → TURN relay hardening` describes
+  that residue and a firewall rule that closes it without touching calls.
+  `TURN_DENIED_PEER_IPS` lets an operator add addresses that must not be
+  committed (their own IPv6 is safe to add).
+
+#### Added
+- `scripts/turn-probe.mjs` — a dependency-free TURN client that audits a
+  deployment: anonymous / wrong / old credentials, TCP allocation, every private
+  and loopback range, a *delivery* test (a datagram sent through the relay must
+  not arrive at a listener on the host), relay ↔ relay.
+
+---
+
 ## [0.11.0] — 2026-09-07
 
 Android APK built from `96a30cf5` on the prod host with the new release key

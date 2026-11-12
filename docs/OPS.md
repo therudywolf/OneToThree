@@ -155,6 +155,113 @@ docker compose -f docker-compose.prod.yml up -d --build api web
 Or use the GitHub Releases page to grab the previous tag and
 `git checkout` it.
 
+## TURN relay hardening
+
+coturn is the one internet-facing service that sends UDP wherever a signed-in
+user tells it to, so it hands out nothing a stranger can reuse and refuses the
+places it could be aimed at.
+
+### Credentials
+
+- **Per user, time-limited** (the TURN REST API). `GET /api/ice-servers` returns
+  `username = "<expiry unix>:<user id>"` and
+  `credential = base64(HMAC-SHA1(secret, username))`; coturn recomputes it
+  (`use-auth-secret`) and refuses it after the expiry. Lifetime:
+  `TURN_CREDENTIAL_TTL_SEC`, default 7200 (2 h), range 60–86400. There is no
+  shared TURN password and no `--user` account. A leftover `TURN_PASSWORD` /
+  `TURN_USERNAME` in `.env.prod` is ignored (the api logs one error naming the
+  variable) — delete it.
+- **The secret is a file**: `secrets/turn_auth_secret`, mode 0644 inside the 0700
+  `secrets/` directory like the others (the api runs as uid 1001). The api reads
+  it through `TURN_AUTH_SECRET_FILE`; coturn's entrypoint copies it into a runtime
+  config on a tmpfs, so it is in neither `ps` nor `docker inspect`.
+- **A call longer than the lifetime.** coturn re-checks the credentials on every
+  Allocate refresh, so a relay that outlives them is dropped at the next refresh.
+  The web client fetches fresh credentials before an ICE restart when its own are
+  within 10 minutes of expiry, so a call over ~2 h sees one short reconnect
+  instead of ending.
+- **Rotating the secret** (do it when it may have leaked, not on a schedule):
+
+  ```bash
+  cd ~/stacks/onetothree.ru
+  openssl rand -hex 32 | tr -d '\n' > secrets/turn_auth_secret.new
+  chmod 644 secrets/turn_auth_secret.new && mv secrets/turn_auth_secret.new secrets/turn_auth_secret
+  docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --force-recreate api coturn
+  ```
+
+  Calls in progress drop for about 10 seconds; every client gets credentials
+  signed with the new secret at its next fetch. Check there is no other deploy
+  running first (see `scripts/deploy-prod.sh`).
+
+### Which peers the relay may reach
+
+`docker/coturn/turnserver.conf` refuses private, loopback, link-local, CGNAT,
+benchmarking, reserved and multicast addresses as relay peers, and
+`no-tcp-relay` removes RFC 6062 TCP allocations — the way a TURN user opens TCP
+connections *from* the relay. Browsers use neither.
+
+The server's **own public address is deliberately not on that list.** The api
+answers `transportPolicy: relay`, so a call is relay ↔ relay: both legs end on
+this coturn, and each leg's peer *is this host's public address*. Denying it
+makes every such call fail with `403 Forbidden IP` on CreatePermission —
+measured on coturn 4.13.1, not assumed. So what remains reachable through the
+relay is **UDP** to this host's public address, from that same address: in
+practice services that are public anyway (coturn itself, LiveKit's UDP port,
+HTTP/3 on :443, VPN ports). Two consequences:
+
+- a gateway or proxy that trusts the host's own address would see that traffic as
+  trusted. HTTP/3 is the only HTTP that UDP can carry, and Caddy can stop
+  serving it (`servers { protocols h1 h2 }`) if the gateway makes that matter;
+- the host firewall can close the gap without touching calls — UDP from a relay
+  port to anything local that is not itself a relay port:
+
+  ```bash
+  # needs root; add it to the firewall's persistent configuration as well
+  iptables  -I OUTPUT 1 -o lo -p udp -m owner --uid-owner 0 --sport 49160:49200 ! --dport 49160:49200 -j DROP
+  ip6tables -I OUTPUT 1 -o lo -p udp -m owner --uid-owner 0 --sport 49160:49200 ! --dport 49160:49200 -j DROP
+  ```
+
+  `--uid-owner 0` is coturn (container root). Relay ↔ relay traffic has a relay
+  port at both ends and is untouched; so is traffic to remote peers (it does not
+  leave through `lo`). Another root process whose ephemeral source port happens to
+  fall in 49160–49200 and that talks to a local UDP service would be dropped too —
+  rare, and a retry picks another port. Verify with the probe below.
+
+`TURN_DENIED_PEER_IPS` (comma separated; the entrypoint turns each entry into a
+`denied-peer-ip=` line) is for addresses that must not be committed to a public
+repository. This host's own **IPv6** address is safe to list (a relay ↔ relay leg
+does not use it); do not list the IPv4 one unless your clients never relay
+through this host.
+
+### Verifying it — `scripts/turn-probe.mjs`
+
+A dependency-free TURN client. Run it on the TURN host, so its delivery test can
+listen on the host's own addresses:
+
+```bash
+cd ~/stacks/onetothree.ru
+docker run --rm --network host \
+  -v "$PWD/scripts/turn-probe.mjs:/probe.mjs:ro" \
+  -v "$PWD/secrets/turn_auth_secret:/secret:ro" \
+  node:22-alpine node /probe.mjs \
+    --host turn.example.org --secret-file /secret \
+    --own-ip <public IPv4> --own-ip <public IPv6>
+```
+
+It checks that anonymous Allocate and a wrong password are refused, valid
+credentials are accepted, a TCP allocation is refused, private / loopback /
+link-local / CGNAT / multicast peers are refused (for loopback it also checks that
+a datagram really does not arrive), reports whether the host's own addresses are
+reachable (`--own-policy blocked` makes that a failure once the firewall rule is
+in), and that two allocations still reach each other (`--relay-to-relay allow`).
+`--transport tcp` and `--transport tls --servername <host>` cover 3478/tcp and
+5349; `--user turn --password-env OLD_PASSWORD --expect-rejected` proves a retired
+password no longer works. The exit status is 1 when any check fails. Run it after
+**any** recreate of coturn: the `cap_drop: [ALL]` + `cap_add` pair in
+`docker-compose.prod.yml` is there because a bare `cap_drop: [ALL]` makes this
+image's `turnserver` fail to start, and that sat in the file unnoticed until the
+container was next recreated.
+
 ## Metrics
 
 The API exposes Prometheus metrics at `GET /metrics`, **opt-in**: with

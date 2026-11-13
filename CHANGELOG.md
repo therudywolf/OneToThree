@@ -7,6 +7,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### 2026-11-13 — the web image stops shipping a vulnerable Next.js
+
+Trivy on the deployed web image reported five CRITICAL findings, all in
+`next@16.2.11`, all with a fix.
+
+#### Security
+- **`next` 16.2.11 → 16.4.6** (and `eslint-config-next` with it). Clears
+  CVE-2026-75604, GHSA-2xp9-vwfh-vxw4 (unauthenticated RCE in the Image
+  Optimization API when AVIF files are used), GHSA-2464-fhr4-w9xw,
+  GHSA-673q-mjm6-r5xr and GHSA-vcvr-r3jv-pc5j (fixed in 16.3.3 / 16.3.6 /
+  16.4.1). Both lockfiles moved: the root one and `client/package-lock.json`,
+  the one the production image is actually built from. Verified: typecheck,
+  lint, 603 unit tests, a clean `docker build` of `client/Dockerfile`
+  (`npm ci` passes without the lockfile-drift fallback) and Trivy reporting 0
+  CRITICAL on the result.
+
 ### 2026-11-12 — the TURN relay stops being a shared password
 
 A security review found that `/api/ice-servers` handed every signed-in account

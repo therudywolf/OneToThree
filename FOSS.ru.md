@@ -95,7 +95,7 @@
 | **Docker** | — | Контейнеризация |
 | **Docker Compose** | v2 | Оркестрация сервисов (7 сервисов) |
 | **PostgreSQL** | alpine | Постоянное хранилище пользователей, чатов, сообщений и устройств |
-| **MinIO** | latest | S3-совместимое хранилище зашифрованных медиа |
+| **MinIO** | RELEASE.2025-10-15 (сборка из исходников) | S3-совместимое хранилище зашифрованных медиа. Апстрим в архиве, см. `docker/minio/README.md` |
 | **Caddy** | 2-alpine | Reverse proxy и автоматический TLS через Let's Encrypt |
 | **coturn** | 4.6 | TURN/STUN relay для обхода NAT в WebRTC |
 | **Redis** | — | Опционально: QR-токены и multi-node deployment |
@@ -403,7 +403,7 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 | Сервис | Образ | Ресурсы | Health check |
 |---|---|---|---|
 | **db** | `postgres:alpine` | 1 CPU, 512 MB | `pg_isready` каждые 5s |
-| **minio** | `minio/minio:latest` | 2 CPU, 512 MB | `mc ready local` каждые 5s |
+| **minio** | `forestmessenger-minio` (сборка из `docker/minio`) | 2 CPU, 512 MB | `mc ready local` каждые 5s |
 | **db-migrate** | Custom (`node:20-alpine`) | 0.25 CPU share | Одноразовый запуск |
 | **api** | Custom (`node:20-alpine`) | 4 CPU, 1 GB, read-only fs | `GET /health` каждые 10s |
 | **web** | Custom (`node:20-alpine`) | 4 CPU, 1.5 GB | `GET /` каждые 15s |

@@ -7,6 +7,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### 2026-11-16 — MinIO is built from source
+
+Upstream archived MinIO in April 2026 and deleted the `minio/minio` image from
+Docker Hub. The three compose files pinned
+`minio/minio:RELEASE.2025-04-22T22-12-26Z`, which no longer pulls on a fresh
+machine, and the copy that kept running carried seven fixable CRITICAL findings
+(Go stdlib, `grpc`, `amqp091-go`) that nobody will patch upstream.
+
+#### Changed
+- **`minio` is built from `docker/minio/Dockerfile`** in all three compose files
+  (image `forestmessenger-minio:2025-10-15-r1`). It is the last upstream release,
+  `RELEASE.2025-10-15T17-29-55Z`, fetched by commit id, compiled with Go 1.27.4
+  and with `google.golang.org/grpc` v1.79.3 and `amqp091-go` v1.13.0; `mc` (the
+  healthcheck client) is rebuilt the same way. Same UBI micro base, entrypoint,
+  `*_FILE` variables, volume and healthcheck as the official image, so it is a
+  drop-in. Trivy: 0 fixable CRITICAL (was 7 of 9). The two that remain,
+  CVE-2026-33322 (OIDC) and CVE-2026-33419 (LDAP login), have no fix in any
+  community source and concern features this stack does not use.
+- Compatibility was checked with the app's own S3 code (`server/src/lib/s3.ts`:
+  bucket setup with policy and CORS, SDK and presigned uploads, presigned reads,
+  the Deny-unless-SigV4 policy): 16 checks pass on the new image over data
+  written by the old one, and again after a rollback from a copy of the volume.
+
+#### Upgrading
+- **Copy the data volume before switching an existing install**: a newer MinIO
+  rewrites metadata on `/data`. The procedure, with the rollback, is in
+  `docker/minio/README.md`. Build on a workstation, not on a small host: the
+  build needs several minutes and 2–3 GB of RAM.
+
 ### 2026-11-16 — prod deploys build one image at a time
 
 `scripts/deploy-prod.sh` handed `web` and `api` to a single

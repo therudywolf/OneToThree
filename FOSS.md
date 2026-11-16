@@ -98,7 +98,7 @@ OneToThree is:
 | **Docker** | — | Containerization (node:22-alpine base) |
 | **Docker Compose** | v2 | Service orchestration (7 services) |
 | **PostgreSQL** | alpine | Persistent storage — users, chats, messages, devices |
-| **MinIO** | latest | S3-compatible encrypted media storage |
+| **MinIO** | RELEASE.2025-10-15 (built from source) | S3-compatible encrypted media storage. Upstream is archived; see `docker/minio/README.md` |
 | **Caddy** | 2-alpine | Reverse proxy, automatic TLS (Let's Encrypt ACME) |
 | **coturn** | 4.6 | TURN/STUN relay for WebRTC NAT traversal |
 | **Redis** | — | Optional: QR token sharing for multi-node deploy |
@@ -596,7 +596,7 @@ docker-compose.prod.yml — 7 services
 | Service | Image | Resources | Health Check |
 |---|---|---|---|
 | **db** | `postgres:alpine` | 1 CPU, 512 MB | `pg_isready` every 5s |
-| **minio** | `minio/minio:latest` | 2 CPU, 512 MB | `mc ready local` every 5s |
+| **minio** | `forestmessenger-minio` (built from `docker/minio`) | 2 CPU, 512 MB | `mc ready local` every 5s |
 | **db-migrate** | Custom (node:22-alpine) | 0.25 CPU share | Runs once, exits |
 | **api** | Custom (node:22-alpine) | 4 CPU, 1 GB, read-only fs | `GET /health` every 10s |
 | **web** | Custom (node:22-alpine) | 4 CPU, 1.5 GB | `GET /` every 15s |

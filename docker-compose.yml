@@ -51,7 +51,11 @@ services:
       start_period: 5s
 
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Built from source (docker/minio/README.md): upstream archived MinIO and
+    # deleted the Docker Hub image. The first build takes several minutes.
+    build:
+      context: ./docker/minio
+    image: forestmessenger-minio:2025-10-15-r1
     restart: unless-stopped
     mem_limit: 512m
     cpus: 1.0

@@ -7,6 +7,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### 2026-11-16 — web reaches the api by container name
+
+Docker's DNS on the shared `edge` network returned two addresses for the alias
+`api` — ours and wolf4x-cloud-api's — so about half of the fresh connections the
+web container opened to `http://api:8080` landed on the other stack and got a
+404 (measured from inside web: 10 of 20 and 11 of 20 requests).
+
+#### Fixed
+- **`API_INTERNAL_URL` is now `http://forestmessenger-api-1:8080`** — the default
+  in `docker-compose.prod.yml` (`name: forestmessenger` fixes the container name)
+  and documented in `config/env/.env.prod.example`. The value is baked into the
+  image's `/api/*` rewrite (`routes-manifest.json`) and read at runtime by
+  `proxy.ts`, so web was rebuilt and swapped: against the running image only that
+  destination and the build id differ. From inside web, 20 of 20 requests to the
+  api answer 200 (the alias still gives 9 + 11 404s for comparison). Caddy's
+  `web:3000` and `minio:9000` upstreams moved to container names in the same
+  change (that config lives in the separate caddy repo).
+- `docs/OPS.md` gets the symptom, the check and the rebuild-required warning.
+
 ### 2026-11-16 — MinIO is built from source
 
 Upstream archived MinIO in April 2026 and deleted the `minio/minio` image from

@@ -283,7 +283,13 @@ services:
         # by the Dockerfile. Must be the internal api service — the web container's
         # localhost has no API. Empty here => onetothree.ru/api/* 500s with
         # ECONNREFUSED 127.0.0.1:8080 (the Next proxy can't reach the API).
-        API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
+        # The api's CONTAINER NAME, not the alias `api`: web sits on the shared
+        # `edge` network, where other stacks can publish the same alias
+        # (wolf4x-cloud-api does). Docker's DNS then returns both addresses and
+        # about half of the fresh connections land on the wrong service and get a
+        # 404. `name: forestmessenger` above fixes the container name. Changing the
+        # value means REBUILDING web: the rewrite is serialized at build time.
+        API_INTERNAL_URL: ${API_INTERNAL_URL:-http://forestmessenger-api-1:8080}
     restart: unless-stopped
     dns:
       - 8.8.8.8

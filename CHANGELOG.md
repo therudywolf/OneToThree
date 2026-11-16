@@ -7,6 +7,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### 2026-11-16 — prod deploys build one image at a time
+
+`scripts/deploy-prod.sh` handed `web` and `api` to a single
+`docker compose up --build`, which builds every service at once. On the 8 GB
+production host that raised a critical `MemoryPressureHigh` alert on 2026-11-12.
+
+#### Fixed
+- **`deploy-prod.sh` builds the images one at a time.** `COMPOSE_PARALLEL_LIMIT=1`
+  is now exported (an operator's own value wins), but it is not what does the
+  work: on Compose v5 image builds are delegated to buildx bake, which starts
+  every target together. Measured: two toy builds began in the same second with
+  the limit at 1, and with `COMPOSE_BAKE=false` as well. The script therefore
+  runs one `docker compose build <service>` per service first, so the
+  `up --build` that follows only finds every layer cached and swaps the
+  containers. A failed build now stops the deploy before anything is swapped.
+  Pinned by five tests in `scripts/lib/build-stamp.test.mjs`: one build per
+  service, all of them before the swap, the limit defaulting to 1, an operator's
+  value kept, a failed build stopping the run. Not changed: the self-host
+  `deploy.sh`.
+
 ### 2026-11-13 — the web image stops shipping a vulnerable Next.js
 
 Trivy on the deployed web image reported five CRITICAL findings, all in

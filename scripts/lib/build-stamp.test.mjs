@@ -105,10 +105,10 @@ function makeStartupFixture() {
   return root
 }
 
-function runDeploy(root, { args = '', served, baked, curlRc = '0', env = {} } = {}) {
+function runDeploy(root, { args = '', served, baked, curlRc = '0', env = {}, stubs = '' } = {}) {
   const dockerLog = join(root, 'docker.log')
   const curlLog = join(root, 'curl.log')
-  const result = bash(`${STUBS}\nsource ./scripts/deploy-prod.sh ${args}`, {
+  const result = bash(`${STUBS}\n${stubs}\nsource ./scripts/deploy-prod.sh ${args}`, {
     cwd: root,
     env: {
       SKIP_MIGRATE: '1',
@@ -411,6 +411,106 @@ describe('deploy-prod.sh — verification decides the exit status', { skip: !has
       const r = runDeploy(root)
       assert.notEqual(r.code, 0)
       assert.match(r.stderr, /no usable DOMAIN=/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+/**
+ * The prod host has 8 GB of RAM; `up --build web api` builds both images at once
+ * and that raised a critical MemoryPressureHigh alert on 2026-11-12. Compose v5
+ * ignores COMPOSE_PARALLEL_LIMIT for builds (they go through buildx bake), so
+ * the script has to keep them apart itself: one `compose build` per service,
+ * all of them before the swap.
+ */
+describe('deploy-prod.sh — one image build at a time', { skip: !hasBash }, () => {
+  /**
+   * Same stub as STUBS, but every docker call also records the compose limit it
+   * inherited. Bare `$COMPOSE_PARALLEL_LIMIT` on purpose: the script runs with
+   * `set -u`, so a deploy that reached `docker` without exporting it would fail
+   * loudly here instead of logging a blank.
+   */
+  const LIMIT_STUB = String.raw`
+docker() { printf '%s limit=%s\n' "$*" "$COMPOSE_PARALLEL_LIMIT" >> "$DOCKER_LOG"; if [ "$#" -gt 0 ] && [ "$1" = exec ]; then printf '%s' "$FAKE_BAKED"; fi; return 0; }
+`
+
+  const buildLines = (log) => log.split('\n').filter((l) => / build \S+( limit=\S+)?$/.test(l))
+
+  test('each service gets its own `compose build`, and all of them run before the swap', () => {
+    const root = makeFixture()
+    try {
+      const r = runDeploy(root)
+      assert.equal(r.code, 0, r.stderr)
+      const lines = r.docker.split('\n')
+      const builds = buildLines(r.docker)
+      assert.deepEqual(
+        builds.map((l) => l.trim().split(' ').pop()),
+        ['web', 'api'],
+        'expected exactly one `compose build` per service, in argument order'
+      )
+      assert.ok(
+        !lines.some((l) => / build (web api|api web)\b/.test(l)),
+        'a single `compose build web api` would build both images at once'
+      )
+      const lastBuild = lines.lastIndexOf(builds[builds.length - 1])
+      const swap = lines.findIndex((l) => l.includes('up -d --build'))
+      assert.ok(swap > lastBuild, 'the swap must come after every image is built')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('a single-service deploy builds just that service', () => {
+    const root = makeFixture()
+    try {
+      const r = runDeploy(root, { args: 'web' })
+      assert.equal(r.code, 0, r.stderr)
+      assert.deepEqual(
+        buildLines(r.docker).map((l) => l.trim().split(' ').pop()),
+        ['web']
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('COMPOSE_PARALLEL_LIMIT defaults to 1 for every compose call', () => {
+    const root = makeFixture()
+    try {
+      const r = runDeploy(root, { stubs: LIMIT_STUB, env: { COMPOSE_PARALLEL_LIMIT: '' } })
+      assert.equal(r.code, 0, r.stderr)
+      const compose = r.docker.split('\n').filter((l) => l.startsWith('compose '))
+      assert.ok(compose.length >= 3, 'expected two builds and an up')
+      for (const l of compose) assert.match(l, / limit=1$/, l)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('an operator who sets COMPOSE_PARALLEL_LIMIT keeps their value', () => {
+    const root = makeFixture()
+    try {
+      const r = runDeploy(root, { stubs: LIMIT_STUB, env: { COMPOSE_PARALLEL_LIMIT: '3' } })
+      assert.equal(r.code, 0, r.stderr)
+      const compose = r.docker.split('\n').filter((l) => l.startsWith('compose '))
+      for (const l of compose) assert.match(l, / limit=3$/, l)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('a failed build stops the deploy before anything is swapped', () => {
+    const root = makeFixture()
+    try {
+      // `build web` fails; the stub must not be asked to `up` afterwards.
+      const failing = String.raw`
+docker() { printf '%s\n' "$*" >> "$DOCKER_LOG"; case "$*" in *' build web') return 1 ;; esac; return 0; }
+`
+      const r = runDeploy(root, { stubs: failing })
+      assert.notEqual(r.code, 0)
+      assert.doesNotMatch(r.docker, /up -d --build/)
+      assert.doesNotMatch(r.stdout, /\[deploy\] done\./)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

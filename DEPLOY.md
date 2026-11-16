@@ -307,6 +307,13 @@ Two rules the script now enforces, because breaking them took production down:
   the "new build, reload" banner (`version-check.ts` skips the comparison for
   `dev`) and leaves nobody able to tell which commit prod is running.
 
+It builds the images **one at a time**, not side by side. The prod host has 8 GB
+of RAM, and two Next.js/TypeScript builds at once raised a critical memory alert.
+`COMPOSE_PARALLEL_LIMIT=1` alone does not do this on Compose v5 (builds go
+through buildx bake, which starts every target together), so the script runs one
+`docker compose build <service>` per service before the swap. A web + api deploy
+therefore takes the sum of both build times instead of the longer of the two.
+
 Run it detached, as above: if the SSH session drops mid-build, the compose it
 started keeps running as an orphan, and the next attempt would race it.
 

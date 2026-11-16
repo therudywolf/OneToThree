@@ -26,6 +26,16 @@
 # REMOVED AND NOT RESTARTED. Prod was down until someone noticed. It happened
 # twice in one day, because a build takes ~10 minutes and nothing said "busy".
 #
+# ONE IMAGE BUILD AT A TIME. The prod host has 8 GB of RAM and ~70 containers,
+# and `up --build web api` builds every service that needs it at once: on
+# 2026-11-12 two Next.js/TypeScript builds side by side raised a critical
+# MemoryPressureHigh alert. COMPOSE_PARALLEL_LIMIT=1 is exported below, but on
+# Compose v5 it does NOT keep the builds apart — they are handed to buildx bake,
+# which starts every target together (measured 2026-11-16: two builds started in
+# the same second with the limit at 1, and with COMPOSE_BAKE=false as well). So
+# each service is built by its own `compose build` first, and the `up --build`
+# that follows only finds every layer cached and swaps the containers.
+#
 # Run it DETACHED so an SSH drop cannot leave an orphaned compose mid-swap:
 #   setsid nohup bash scripts/deploy-prod.sh > /tmp/deploy.log 2>&1 < /dev/null &
 #
@@ -87,6 +97,12 @@ if [ "${FORCE:-0}" != "1" ] && command -v pgrep >/dev/null 2>&1; then
 fi
 
 COMPOSE=(docker compose -f docker-compose.prod.yml --env-file .env.prod)
+
+# Caps Compose's own concurrent operations (container create/start). It is NOT
+# what keeps the image builds apart — see "ONE IMAGE BUILD AT A TIME" above; the
+# build loop further down is. An operator who sets it keeps their value.
+export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
+
 SERVICES=("$@")
 if [ ${#SERVICES[@]} -eq 0 ]; then
   SERVICES=(web api)
@@ -132,7 +148,16 @@ case " ${SERVICES[*]} " in
   *) UP_ARGS+=(--wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT:-420}") ;;
 esac
 
-echo "[deploy] rebuilding ${SERVICES[*]} (the old containers keep serving until the swap)…"
+echo "[deploy] building ${SERVICES[*]} one image at a time (the old containers keep serving)…"
+for svc in "${SERVICES[@]}"; do
+  echo "[deploy] building $svc…"
+  # A service with no build section (coturn, say) only prints "No services to
+  # build" and exits 0, so this is safe for every name `up` accepts. A failed
+  # build stops the deploy here, before anything has been swapped.
+  "${COMPOSE[@]}" build "$svc"
+done
+
+echo "[deploy] swapping ${SERVICES[*]} (every layer is cached now; the old containers serve until this moment)…"
 "${COMPOSE[@]}" "${UP_ARGS[@]}" "${SERVICES[@]}"
 
 # .env.prod is hand-edited and inline `# …` annotations are a supported feature

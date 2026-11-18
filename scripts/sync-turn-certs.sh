@@ -143,10 +143,19 @@ fi
 # script reported "certificate missing" every single night for months while the
 # certificate actually existed. Being in the docker group is enough to read it
 # out of the running Caddy container, so fall back to that instead of failing.
+#
+# Only the Caddy container itself: other containers mount the same volume too
+# (on forestserver nextdns-dot, a CoreDNS image without a shell). `docker ps`
+# lists the newest container first, so once nextdns-dot was recreated (18.11.2026)
+# it became "the first container with this volume", `docker exec ... sh` failed
+# with 127 under `set -e`, and the nightly sync stopped working silently.
+# CADDY_CONTAINER is a name filter (substring), the default matches infra-caddy
+# and <project>-caddy-1.
 if [[ ! -d "$SRC" ]]; then
-  CADDY_CID="$(docker ps -q --filter "volume=$CADDY_VOLUME_NAME" | head -1 || true)"
+  CADDY_CONTAINER="${CADDY_CONTAINER:-caddy}"
+  CADDY_CID="$(docker ps -q --filter "volume=$CADDY_VOLUME_NAME" --filter "name=$CADDY_CONTAINER" | head -1 || true)"
   if [[ -n "$CADDY_CID" ]]; then
-    CERT_DIR_IN="$(docker exec "$CADDY_CID" sh -c "find /data/caddy/certificates -type d -name '$TURN_HOST' 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
+    CERT_DIR_IN="$(docker exec "$CADDY_CID" sh -c "find /data/caddy/certificates -type d -name '$TURN_HOST' 2>/dev/null | head -1" 2>/dev/null | tr -d '\r' || true)"
     if [[ -n "$CERT_DIR_IN" ]]; then
       SRC="$(mktemp -d)"
       TMP_SRC="$SRC"

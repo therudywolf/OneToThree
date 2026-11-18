@@ -128,6 +128,19 @@ services:
       timeout: 5s
       retries: 15
       start_period: 20s
+    # hardening 2026-11
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+      - /root/.minio:size=4m
+    pids_limit: 256
+    oom_score_adj: -200
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   db-migrate:
     # Mirrors the db/redis/minio hardening: the migrator only reads files and

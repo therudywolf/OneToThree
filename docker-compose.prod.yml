@@ -77,6 +77,16 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    # hardening 2026-11
+    read_only: true
+    pids_limit: 128
+    oom_score_adj: -200
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   minio:
     cap_drop: [ALL]
@@ -152,6 +162,17 @@ services:
       - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
       - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
       - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
+    # hardening 2026-11
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+    pids_limit: 64
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
     # Built from the repo root so the server installs from the authoritative
@@ -259,6 +280,16 @@ services:
       timeout: 5s
       retries: 10
       start_period: 45s
+    # hardening 2026-11
+    cap_drop: [ALL]
+    pids_limit: 256
+    oom_score_adj: 0
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Next.js embeds NEXT_PUBLIC_* at build time from .env.prod (see args below). TURN ICE must use a
   # dedicated DNS name (e.g. turn.DOMAIN), not api.* — see coturn comments (Cloudflare / UDP).
@@ -341,6 +372,15 @@ services:
       timeout: 8s
       retries: 8
       start_period: 90s
+    # hardening 2026-11
+    pids_limit: 256
+    oom_score_adj: 0
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # TURN relay for WebRTC (symmetric NAT). Uses host networking so UDP relay
   # ports are not behind Docker NAT.
@@ -429,6 +469,15 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    # hardening 2026-11
+    pids_limit: 256
+    oom_score_adj: 0
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # LiveKit SFU — selective forwarding unit for 3+ participants / low-latency
   # video. Uses host networking because WebRTC requires a wide UDP range and
@@ -488,6 +537,15 @@ services:
     # Rely on restart policy; group calls fall back to P2P/TURN when SFU is down.
     healthcheck:
       disable: true
+    # hardening 2026-11
+    pids_limit: 512
+    oom_score_adj: 0
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # caddy: REMOVED — reverse proxy переехал в ~/infra/caddy (infra-caddy контейнер).
   # Не добавляй сюда caddy: — конфликт за порты 80/443.
